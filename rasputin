@@ -1,0 +1,444 @@
+#!/usr/bin/env bash
+#
+# RASPUTIN BOOT SEQUENCE
+# Deterministic Local Coding System
+#
+
+set -euo pipefail
+
+# ------------------------------------------------------------------------------
+# CONFIGURATION
+# ------------------------------------------------------------------------------
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+WORKSPACE_PATH="${1:-$(pwd)}"
+CONFIG_FILE="$ROOT_DIR/rasputin.json"
+REQUIRED_MODEL="qwen2.5-coder:14b"
+OLLAMA_HOST="${OLLAMA_HOST:-http://localhost:11434}"
+PROFILE_NAME="Rasputin OCR"
+
+# ANSI color codes
+CLR_RESET="\033[0m"
+CLR_DIM="\033[2m"
+CLR_BOLD="\033[1m"
+CLR_GREEN="\033[32m"
+CLR_CYAN="\033[36m"
+CLR_YELLOW="\033[33m"
+CLR_RED="\033[31m"
+CLR_MAGENTA="\033[35m"
+
+# Timing
+DELAY_STAGE=0.4
+DELAY_CHECK=0.15
+
+ensure_terminal_profile() {
+    if [[ "$(uname -s)" != "Darwin" ]] || [[ "${TERM_PROGRAM:-}" != "Apple_Terminal" ]]; then
+        return
+    fi
+
+    if command -v python3 >/dev/null 2>&1; then
+        python3 "$ROOT_DIR/support/install_terminal_profile.py" --quiet >/dev/null 2>&1 || true
+    fi
+
+    osascript -e "
+tell application \"Terminal\"
+    set profileName to \"$PROFILE_NAME\"
+    set availableProfiles to name of every settings set
+    if availableProfiles contains profileName then
+        try
+            set current settings of selected tab of front window to settings set profileName
+        on error
+            try
+                set current settings of front window to settings set profileName
+            end try
+        end try
+    end if
+end tell
+" >/dev/null 2>&1 || true
+}
+
+# ------------------------------------------------------------------------------
+# VISUAL PRIMITIVES
+# ------------------------------------------------------------------------------
+
+print_header() {
+    echo ""
+    echo -e "${CLR_DIM}                .        ·        .        ·                .        ·        .        ·                .        ·        .        ·                .        ·        .        ·${CLR_RESET}"
+    echo -e "${CLR_DIM}                     .        ·        .        ·                     .        ·        .        ·                     .        ·        .        ·     ·${CLR_RESET}"
+    echo -e "${CLR_DIM}                .        ·        .        ·                .        ·        .        ·                .        ·        .        ·                .        ·        .${CLR_RESET}"
+    echo ""
+    echo -e "${CLR_BOLD}${CLR_RED}РАС·ПУ·ТИН>>РАС      РАС·ПУ·ТИН         РАС·ПУ·ТИН>>РАС      РАС·ПУ·ТИН>>РАС      РАС|      ПУ·ТИН     РАС·ПУ·ТИН>>РАС           РАС·ПУ·ТИН         РАС|      ПУ·ТИН${CLR_RESET}"
+    echo -e "${CLR_BOLD}${CLR_RED}РАС|      ПУ·ТИН     РАС|      ПУ·ТИН   РАС|                 РАС|      ПУ·ТИН     РАС|      ПУ·ТИН           РАС|                   РАС|            РАС>>     ПУ·ТИН${CLR_RESET}"
+    echo -e "${CLR_BOLD}${CLR_RED}РАС·ПУ·ТИН>>РАС      РАС·ПУ·ТИН>>РАС·   РАС·ПУ·ТИН>>РАС      РАС·ПУ·ТИН>>РАС      РАС|      ПУ·ТИН           РАС|                   РАС|            РАС|>>    ПУ·ТИН${CLR_RESET}"
+    echo -e "${CLR_BOLD}${CLR_RED}РАС|   >>ПУ·ТИН      РАС|      ПУ·ТИН            >>ПУ·ТИН    РАС|                 РАС|      ПУ·ТИН           РАС|                   РАС|            РАС| >>   ПУ·ТИН${CLR_RESET}"
+    echo -e "${CLR_BOLD}${CLR_RED}РАС|      >>ПУ·Т     РАС|      ПУ·ТИН              ПУ·ТИН    РАС|                 РАС|      ПУ·ТИН           РАС|                   РАС|            РАС|  >>  ПУ·ТИН${CLR_RESET}"
+    echo -e "${CLR_BOLD}${CLR_RED}РАС|        >>ПУ     РАС|      ПУ·ТИН   РАС|      ПУ·ТИН     РАС|                 РАС|      ПУ·ТИН           РАС|                   РАС|            РАС|   >> ПУ·ТИН${CLR_RESET}"
+    echo -e "${CLR_BOLD}${CLR_RED}РАС|          >>     РАС|      ПУ·ТИН   РАС·ПУ·ТИН>>РАС      РАС|                 РАС·ПУ·ТИН>>РАС            РАС|                РАС·ПУ·ТИН         РАС|    >>ПУ·ТИН${CLR_RESET}"
+    echo ""
+    echo -e "${CLR_DIM}                .        ·        .        ·                .        ·        .        ·                .        ·        .        ·                .        ·        .        ·${CLR_RESET}"
+    echo -e "${CLR_DIM}                     .        ·        .        ·                     .        ·        .        ·                     .        ·        .        ·     ·${CLR_RESET}"
+    echo -e "${CLR_DIM}                .        ·        .        ·                .        ·        .        ·                .        ·        .        ·                .        ·        .        ·${CLR_RESET}"
+    echo ""
+}
+
+print_stage() {
+    local num="$1"
+    local name="$2"
+    echo -e "${CLR_DIM}[ STAGE ${num} ]${CLR_RESET} ${CLR_BOLD}${name}${CLR_RESET}"
+    echo ""
+}
+
+print_check() {
+    local label="$1"
+    echo -ne "  ${CLR_DIM}[INIT]${CLR_RESET} ${label} ... "
+}
+
+print_ok() {
+    echo -e "${CLR_GREEN}OK${CLR_RESET}"
+}
+
+print_ready() {
+    echo -e "${CLR_GREEN}READY${CLR_RESET}"
+}
+
+print_connected() {
+    echo -e "${CLR_GREEN}CONNECTED${CLR_RESET}"
+}
+
+print_active() {
+    echo -e "${CLR_GREEN}ACTIVE${CLR_RESET}"
+}
+
+print_cached() {
+    echo -e "${CLR_YELLOW}CACHED${CLR_RESET}"
+}
+
+print_created() {
+    echo -e "${CLR_GREEN}CREATED${CLR_RESET}"
+}
+
+print_resumed() {
+    echo -e "${CLR_CYAN}RESUMED${CLR_RESET}"
+}
+
+print_warning() {
+    echo -e "${CLR_YELLOW}WARNING${CLR_RESET}"
+}
+
+print_fail() {
+    echo -e "${CLR_RED}FAIL${CLR_RESET}"
+}
+
+print_separator() {
+    echo ""
+    echo -e "${CLR_DIM}────────────────────────────────────────────────────────────────${CLR_RESET}"
+    echo ""
+}
+
+spinner() {
+    local pid=$1
+    local delay=0.08
+    local spinstr='|/-\\'
+    while ps -p $pid > /dev/null 2>&1; do
+        for (( i=0; i<${#spinstr}; i++ )); do
+            echo -ne "\r  ${CLR_DIM}[INIT]${CLR_RESET} Initializing ... ${spinstr:$i:1} "
+            sleep $delay
+        done
+    done
+    echo -ne "\r"
+}
+
+# ------------------------------------------------------------------------------
+# STAGE 1 — ENVIRONMENT
+# ------------------------------------------------------------------------------
+
+stage_environment() {
+    print_stage "1" "ENVIRONMENT"
+    
+    print_check "Repository"
+    if [[ -d "$ROOT_DIR/.git" ]] || [[ -f "$ROOT_DIR/Cargo.toml" ]]; then
+        print_ok
+    else
+        print_fail
+        echo -e "\n${CLR_RED}ERROR: Not in Rasputin repository${CLR_RESET}"
+        exit 1
+    fi
+    sleep $DELAY_CHECK
+    
+    print_check "System root"
+    echo -e "${CLR_DIM}$ROOT_DIR${CLR_RESET}"
+    sleep $DELAY_CHECK
+    
+    print_check "Workspace"
+    echo -e "${CLR_DIM}$WORKSPACE_PATH${CLR_RESET}"
+    sleep $DELAY_CHECK
+    
+    print_check "Configuration"
+    if [[ -f "$CONFIG_FILE" ]]; then
+        print_ok
+    else
+        print_warning
+        echo -e "  ${CLR_DIM}(using defaults)${CLR_RESET}"
+    fi
+    sleep $DELAY_STAGE
+}
+
+# ------------------------------------------------------------------------------
+# STAGE 2 — RUNTIME
+# ------------------------------------------------------------------------------
+
+stage_runtime() {
+    print_stage "2" "RUNTIME"
+    
+    cd "$ROOT_DIR"
+    
+    print_check "Cargo toolchain"
+    if command -v cargo >/dev/null 2>&1; then
+        local version=$(cargo --version 2>/dev/null | awk '{print $2}')
+        print_ok
+        echo -e "  ${CLR_DIM}(v${version})${CLR_RESET}"
+    else
+        print_fail
+        echo -e "\n${CLR_RED}ERROR: Rust/Cargo not found${CLR_RESET}"
+        exit 1
+    fi
+    sleep $DELAY_CHECK
+    
+    print_check "Workspace build"
+    
+    # Check if already built
+    local target_dir="$ROOT_DIR/target"
+    local tui_bin="$target_dir/debug/rasputin-tui"
+    local release_bin="$target_dir/release/rasputin-tui"
+    
+    if [[ -x "$release_bin" ]]; then
+        print_ready
+        echo -e "  ${CLR_DIM}(release)${CLR_RESET}"
+    elif [[ -x "$tui_bin" ]]; then
+        # Check if source is newer than binary
+        local newest_source=$(find "$ROOT_DIR/apps" "$ROOT_DIR/crates" -name "*.rs" -type f -newer "$tui_bin" 2>/dev/null | head -1)
+        if [[ -n "$newest_source" ]]; then
+            echo -e "${CLR_YELLOW}STALE${CLR_RESET}"
+            build_runtime
+        else
+            print_cached
+            echo -e "  ${CLR_DIM}(debug)${CLR_RESET}"
+        fi
+    else
+        echo -e "${CLR_YELLOW}BUILD REQUIRED${CLR_RESET}"
+        build_runtime
+    fi
+    sleep $DELAY_STAGE
+}
+
+build_runtime() {
+    echo ""
+    echo -e "  ${CLR_DIM}→ Building workspace...${CLR_RESET}"
+    echo ""
+    
+    if cargo build -p rasputin-tui 2>&1 | while read line; do
+        echo -e "    ${CLR_DIM}$line${CLR_RESET}"
+    done; then
+        echo ""
+        print_check "Build status"
+        print_ready
+    else
+        echo ""
+        print_check "Build status"
+        print_fail
+        echo -e "\n${CLR_RED}ERROR: Build failed${CLR_RESET}"
+        exit 1
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# STAGE 3 — MODEL
+# ------------------------------------------------------------------------------
+
+stage_model() {
+    print_stage "3" "MODEL"
+    
+    print_check "Ollama service"
+    
+    # Check if Ollama is running
+    if curl -s "$OLLAMA_HOST/api/tags" >/dev/null 2>&1; then
+        print_connected
+    else
+        print_fail
+        echo ""
+        echo -e "  ${CLR_RED}Ollama is not running${CLR_RESET}"
+        echo -e "  ${CLR_DIM}Start with: ollama serve${CLR_RESET}"
+        echo ""
+        exit 1
+    fi
+    sleep $DELAY_CHECK
+    
+    print_check "Model registry"
+    local model=$(grep -o '"ollama_model": *"[^"]*"' "$CONFIG_FILE" 2>/dev/null | cut -d'"' -f4 || echo "$REQUIRED_MODEL")
+    echo -e "${CLR_DIM}$model${CLR_RESET}"
+    sleep $DELAY_CHECK
+    
+    print_check "Model availability"
+    
+    # Check if model is pulled
+    if curl -s "$OLLAMA_HOST/api/tags" 2>/dev/null | grep -q "${model%%:*}" 2>/dev/null; then
+        print_ready
+    else
+        echo -e "${CLR_YELLOW}NOT PULLED${CLR_RESET}"
+        echo ""
+        echo -e "  ${CLR_DIM}→ Pull model with: ollama pull $model${CLR_RESET}"
+        echo ""
+        exit 1
+    fi
+    sleep $DELAY_STAGE
+}
+
+# ------------------------------------------------------------------------------
+# STAGE 4 — ENGINE
+# ------------------------------------------------------------------------------
+
+stage_engine() {
+    print_stage "4" "ENGINE"
+    
+    print_check "Forge runtime"
+    if [[ -d "$ROOT_DIR/crates/forge-runtime" ]]; then
+        print_active
+    else
+        print_fail
+        echo -e "\n${CLR_RED}ERROR: Runtime crate not found${CLR_RESET}"
+        exit 1
+    fi
+    sleep $DELAY_CHECK
+    
+    print_check "Tool registry"
+    local tool_count=$(find "$ROOT_DIR/crates" -name "*.rs" -exec grep -l "ToolDef\|tool_definition" {} \; 2>/dev/null | wc -l)
+    if [[ $tool_count -gt 0 ]]; then
+        print_active
+        echo -e "  ${CLR_DIM}($tool_count modules)${CLR_RESET}"
+    else
+        print_active
+        echo -e "  ${CLR_DIM}(core)${CLR_RESET}"
+    fi
+    sleep $DELAY_CHECK
+    
+    print_check "Validation engine"
+    print_active
+    sleep $DELAY_CHECK
+    
+    print_check "Memory systems"
+    print_active
+    sleep $DELAY_STAGE
+}
+
+# ------------------------------------------------------------------------------
+# STAGE 5 — SESSION
+# ------------------------------------------------------------------------------
+
+stage_session() {
+    print_stage "5" "SESSION"
+    
+    # Check for existing session data
+    local session_dir="$HOME/.local/share/rasputin"
+    local has_existing=false
+    
+    if [[ -d "$session_dir" ]] && [[ -n "$(ls -A "$session_dir" 2>/dev/null)" ]]; then
+        has_existing=true
+    fi
+    
+    print_check "Session storage"
+    if [[ -d "$session_dir" ]] || mkdir -p "$session_dir" 2>/dev/null; then
+        print_ok
+        echo -e "  ${CLR_DIM}($session_dir)${CLR_RESET}"
+    else
+        print_warning
+        echo -e "  ${CLR_DIM}(temporary)${CLR_RESET}"
+    fi
+    sleep $DELAY_CHECK
+    
+    # Generate session ID
+    local session_id=$(date +%s | xxd -p 2>/dev/null || echo "$(date +%s)" | od -A n -t x1 | tr -d ' \n' | head -c 16)
+    session_id="${session_id:-$(printf '%x' $(date +%s))}"
+    
+    if [[ "$has_existing" == true ]]; then
+        print_check "Session state"
+        print_resumed
+    else
+        print_check "Session state"
+        print_created
+    fi
+    echo -e "  ${CLR_DIM}(id: ${session_id:0:12})${CLR_RESET}"
+    sleep $DELAY_CHECK
+    
+    export RASPUTIN_SESSION_ID="$session_id"
+    export RASPUTIN_BOOT_TIME=$(date +%s)
+    sleep $DELAY_STAGE
+}
+
+# ------------------------------------------------------------------------------
+# STAGE 6 — INTERFACE
+# ------------------------------------------------------------------------------
+
+stage_interface() {
+    print_stage "6" "INTERFACE"
+    
+    print_check "TUI initialization"
+    print_ready
+    sleep $DELAY_CHECK
+    
+    print_check "Terminal state"
+    local term_info="${TERM:-unknown}"
+    local dims="$(tput cols 2>/dev/null || echo 80)x$(tput lines 2>/dev/null || echo 24)"
+    echo -e "${CLR_DIM}${term_info} (${dims})${CLR_RESET}"
+    sleep $DELAY_CHECK
+    
+    print_check "Handoff"
+    echo -e "${CLR_GREEN}READY${CLR_RESET}"
+    sleep $DELAY_STAGE
+}
+
+# ------------------------------------------------------------------------------
+# BOOT SEQUENCE
+# ------------------------------------------------------------------------------
+
+main() {
+    ensure_terminal_profile
+
+    # Clear screen for cinematic effect
+    clear 2>/dev/null || printf '\033[2J\033[H'
+    
+    # Print header
+    print_header
+    
+    # Run boot stages
+    stage_environment
+    stage_runtime
+    stage_model
+    stage_engine
+    stage_session
+    stage_interface
+    
+    # Final separator
+    print_separator
+    
+    # Handoff message
+    echo -e "  ${CLR_BOLD}${CLR_CYAN}SYSTEM ONLINE${CLR_RESET}"
+    echo ""
+    echo -e "  ${CLR_DIM}Launching interface...${CLR_RESET}"
+    echo ""
+    
+    # Brief pause before handoff
+    sleep 0.5
+    
+    # Clear screen again for clean TUI entry
+    clear 2>/dev/null || printf '\033[2J\033[H'
+    
+    # Execute the TUI
+    cd "$ROOT_DIR"
+    exec cargo run --quiet -p rasputin-tui -- "$WORKSPACE_PATH"
+}
+
+# ------------------------------------------------------------------------------
+# ENTRY POINT
+# ------------------------------------------------------------------------------
+
+main "$@"

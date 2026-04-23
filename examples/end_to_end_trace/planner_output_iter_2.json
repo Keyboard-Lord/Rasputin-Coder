@@ -1,0 +1,5 @@
+{
+  "completion": {
+    "reason": "Created a complete Rust CLI project with main.rs and Cargo.toml. The program prints 'hello world' when run with `cargo run`."
+  }
+}

@@ -1,0 +1,1625 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rasputin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;450;500;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro', sans-serif;
+    }
+
+    /* Color Palette */
+    :root {
+      --bg-page: #0b0b0d;
+      --bg-sidebar: #0e0f12;
+      --bg-panel: #15161a;
+      --bg-raised: #1a1c21;
+      --bg-hover: #1f2127;
+      --text-soft: #d8dae0;
+      --text-muted: #8f939c;
+      --text-subtle: #5a5e66;
+      --text-dim: #3a3e46;
+      --border-subtle: #1e2026;
+      --border-light: #26282e;
+      --accent: #c45c3e;
+      --accent-soft: rgba(196, 92, 62, 0.12);
+    }
+
+    .ember-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background-color: var(--accent);
+      box-shadow: 0 0 8px rgba(196, 92, 62, 0.4);
+    }
+
+    .watermark {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cpath d='M60 8 L112 60 L60 112 L8 60 Z' fill='none' stroke='%231a1c21' stroke-width='0.8'/%3E%3Ccircle cx='60' cy='60' r='10' fill='none' stroke='%231a1c21' stroke-width='0.8'/%3E%3C/svg%3E");
+      background-size: 500px 500px;
+      background-position: center;
+      background-repeat: no-repeat;
+      opacity: 0.03;
+      pointer-events: none;
+    }
+
+    .task-panel {
+      background: var(--bg-panel);
+      border-radius: 28px;
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.03) inset,
+        0 0 0 1px var(--border-subtle),
+        0 8px 32px rgba(0, 0, 0, 0.4);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .task-panel:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.04) inset,
+        0 0 0 1px var(--border-light),
+        0 12px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .task-panel.focused {
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.04) inset,
+        0 0 0 1px rgba(196, 92, 62, 0.2),
+        0 12px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .panel-surface {
+      background: var(--bg-raised);
+      border-radius: 16px;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+    }
+
+    .nav-item {
+      color: var(--text-subtle);
+      transition: all 0.15s ease;
+    }
+
+    .nav-item:hover {
+      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .nav-item.active {
+      color: var(--text-soft);
+    }
+
+    .nav-item.active::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 2px;
+      height: 16px;
+      background-color: var(--accent);
+      border-radius: 0 2px 2px 0;
+    }
+
+    /* Smooth transitions */
+    .transition-subtle {
+      transition: all 0.15s ease;
+    }
+
+    /* Scrollbar styling */
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: var(--text-dim);
+      border-radius: 3px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: var(--text-subtle);
+    }
+
+    .mode-btn {
+      color: var(--text-subtle);
+      transition: all 0.15s ease;
+    }
+
+    .mode-btn:hover {
+      color: var(--text-muted);
+    }
+
+    .mode-btn.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    textarea::placeholder {
+      color: var(--text-dim);
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+
+    .status-dot.running {
+      background: var(--accent);
+      box-shadow: 0 0 6px rgba(196, 92, 62, 0.4);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .status-dot.completed {
+      background: #5a8f6e;
+    }
+
+    .status-dot.failed {
+      background: #8f4a4a;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    .log-line {
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .scrollbar-thin::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    .scrollbar-thin::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .scrollbar-thin::-webkit-scrollbar-thumb {
+      background: var(--border-light);
+      border-radius: 3px;
+    }
+
+    .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+      background: var(--text-dim);
+    }
+  </style>
+</head>
+
+<body class="antialiased overflow-hidden" style="background: var(--bg-page); color: var(--text-soft);">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useRef, useEffect, createContext, useContext, useCallback } = React;
+
+    // ==================== TYPES & STATE ====================
+    const AppContext = createContext(null);
+
+    const generateId = () => Math.random().toString(36).substring(2, 10);
+    const now = () => new Date().toISOString();
+    const formatTime = (iso) => new Date(iso).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    const formatRelative = (iso) => {
+      const diff = Date.now() - new Date(iso).getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return 'Just now';
+      if (mins < 60) return `${mins}m ago`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours}h ago`;
+      return `${Math.floor(hours / 24)}d ago`;
+    };
+
+    // ==================== INITIAL DATA ====================
+    // Projects now represent real local repositories/folders with Ollama model config
+    const INITIAL_REPOS = [
+      {
+        id: 'repo-1',
+        name: 'Rasputin-1',
+        path: '/Users/mcrae/Desktop/Rasputin-1',
+        displayPath: '~/Desktop/Rasputin-1',
+        type: 'git',
+        gitDetected: true,
+        branch: 'main',
+        lastOpened: new Date(Date.now() - 7200000).toISOString(),
+        isFavorite: true,
+        detectedFiles: ['Cargo.toml', 'README.md', 'FORGE_AGENT_PROTOCOL_SPEC.md'],
+        ollama_model: 'qwen3:8b',
+        configSource: '.forge/config.toml'
+      },
+      {
+        id: 'repo-2',
+        name: 'rasputin-interface',
+        path: '/Users/mcrae/Desktop/Rasputin-1/rasputin-interface',
+        displayPath: '~/Desktop/Rasputin-1/rasputin-interface',
+        type: 'git',
+        gitDetected: true,
+        branch: 'main',
+        lastOpened: new Date(Date.now() - 86400000).toISOString(),
+        isFavorite: false,
+        detectedFiles: ['Cargo.toml', 'README.md'],
+        ollama_model: 'qwen2.5-coder:14b',
+        configSource: '.forge/config.toml'
+      },
+      {
+        id: 'repo-3',
+        name: 'api-gateway',
+        path: '/Users/mcrae/Work/api-gateway',
+        displayPath: '~/Work/api-gateway',
+        type: 'git',
+        gitDetected: true,
+        branch: 'main',
+        lastOpened: new Date(Date.now() - 259200000).toISOString(),
+        isFavorite: false,
+        detectedFiles: ['package.json', 'README.md'],
+        ollama_model: 'llama3.1:8b',
+        configSource: '.forge/config.toml'
+      }
+    ];
+
+    // Ollama integration configuration
+    const OLLAMA_CONFIG = {
+      endpoint: 'http://localhost:11434',
+      apiVersion: 'v1',
+      timeout: 5000
+    };
+
+    const WELCOME_MESSAGE = {
+      id: 'msg-welcome',
+      type: 'assistant',
+      content: `I am Rasputin, your Forge orchestration agent.
+
+I can help you with:
+
+  • Create and manage projects
+  • Run tasks and workflows
+  • View runtime status and logs
+  • Validate and test code
+
+What would you like to work on?`,
+      timestamp: new Date(Date.now() - 3600000).toISOString(),
+      metadata: {}
+    };
+
+    // ==================== CHAT COMMAND PARSER ====================
+    const parseCommand = (text) => {
+      const lower = text.toLowerCase().trim();
+
+      // Repository/folder commands
+      if (lower.startsWith('open folder') || lower.startsWith('open repo') || lower.startsWith('attach repo')) {
+        const path = text.replace(/^(open|attach)\s+(folder|repo|repository)\s*/i, '').trim();
+        return { type: 'open_repo', path };
+      }
+
+      if (lower.startsWith('switch repo') || lower.startsWith('switch to') || lower.startsWith('use repo')) {
+        const name = text.replace(/^(switch|switch to|use)\s+(repo|repository)\s*/i, '').trim();
+        return { type: 'switch_repo', name };
+      }
+
+      if (lower.startsWith('show repos') || lower.startsWith('list repos') || lower === 'repos') {
+        return { type: 'list_repos' };
+      }
+
+      // Legacy project commands (redirect to repo)
+      if (lower.startsWith('create project') || lower.startsWith('new project')) {
+        return { type: 'assistant_response', content: 'To work with a new folder, use "open folder /path/to/folder" to attach a local directory.' };
+      }
+
+      if (lower.startsWith('switch project') || lower.startsWith('use project') || lower.startsWith('open project')) {
+        const name = text.replace(/^(switch|use|open)\s+project\s*/i, '').trim();
+        return { type: 'switch_repo', name };
+      }
+
+      // Panel commands
+      if (lower.startsWith('show runtime') || lower.startsWith('open runtime') || lower === 'runtime') {
+        return { type: 'show_runtime' };
+      }
+
+      if (lower.startsWith('show logs') || lower === 'logs') {
+        return { type: 'show_logs' };
+      }
+
+      if (lower.startsWith('show validation') || lower === 'validation') {
+        return { type: 'show_validation' };
+      }
+
+      if (lower === 'help' || lower === 'commands' || lower === '?') {
+        return { type: 'help' };
+      }
+
+      return { type: 'task', content: text };
+    };
+
+    // ==================== OLLAMA INTEGRATION ====================
+
+    // Query local Ollama for installed models
+    const fetchOllamaModels = async () => {
+      try {
+        const response = await fetch(`${OLLAMA_CONFIG.endpoint}/api/tags`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Ollama returned ${response.status}`);
+        }
+
+        const data = await response.json();
+        // Extract model tags from Ollama response
+        const models = data.models?.map(m => m.name || m.model) || [];
+        return { success: true, models, raw: data };
+      } catch (error) {
+        return { success: false, error: error.message, models: [] };
+      }
+    };
+
+    // Check if specific model is available locally
+    const verifyModelAvailability = async (modelTag) => {
+      const result = await fetchOllamaModels();
+      if (!result.success) {
+        return { available: false, error: result.error, installedModels: [] };
+      }
+      const isAvailable = result.models.includes(modelTag);
+      return {
+        available: isAvailable,
+        requestedModel: modelTag,
+        installedModels: result.models,
+        error: isAvailable ? null : `Model ${modelTag} not found in local Ollama`
+      };
+    };
+
+    // ==================== APP STATE PROVIDER ====================
+    const AppProvider = ({ children }) => {
+      // Core state - repos are local filesystem folders
+      const [repos, setRepos] = useState(INITIAL_REPOS);
+      const [activeRepoId, setActiveRepoId] = useState('repo-1');
+      const [showRepoPicker, setShowRepoPicker] = useState(false);
+
+      // Ollama integration state
+      const [ollamaState, setOllamaState] = useState({
+        connected: false,
+        availableModels: [],
+        lastCheck: null,
+        error: null
+      });
+
+      // Model state per repo - tracks configured vs available vs overridden
+      const [repoModelState, setRepoModelState] = useState({}); // { repoId: { configured, active, status, override } }
+      const [conversations, setConversations] = useState([
+        {
+          id: 'conv-1',
+          title: 'Getting Started',
+          repoId: 'repo-1',
+          model: 'GPT-4',
+          mode: 'Plan',
+          timestamp: new Date(Date.now() - 3600000).toISOString(),
+          messages: [WELCOME_MESSAGE],
+          runtimeStatus: 'idle',
+          runtimeEvents: [],
+          validation: {
+            syntax: { status: 'idle', detail: '' },
+            lint: { status: 'idle', detail: '' },
+            build: { status: 'idle', detail: '' },
+            test: { status: 'idle', detail: '' },
+          },
+          logs: []
+        }
+      ]);
+      const [activeConversationId, setActiveConversationId] = useState('conv-1');
+      const [inputValue, setInputValue] = useState('');
+      const [rightPanelMode, setRightPanelMode] = useState('runtime'); // 'runtime', 'validation', 'logs', null
+      const [showSettings, setShowSettings] = useState(false);
+
+      const activeConversation = conversations.find(c => c.id === activeConversationId) || conversations[0];
+      const activeRepo = repos.find(r => r.id === activeRepoId);
+
+      // Helper to shorten path for display
+      const shortenPath = (path, maxLen = 35) => {
+        if (path.length <= maxLen) return path;
+        const parts = path.split('/');
+        if (parts.length <= 2) return path;
+        return '.../' + parts.slice(-2).join('/');
+      };
+
+      // ==================== ACTIONS ====================
+      const addMessage = useCallback((conversationId, message) => {
+        setConversations(prev => prev.map(c =>
+          c.id === conversationId
+            ? { ...c, messages: [...c.messages, { ...message, id: `msg-${generateId()}`, timestamp: now() }] }
+            : c
+        ));
+      }, []);
+
+      const addSystemMessage = useCallback((conversationId, content) => {
+        addMessage(conversationId, { type: 'system', content, metadata: {} });
+      }, [addMessage]);
+
+      // Add log entry to conversation logs
+      const addLog = useCallback((level, message, source = 'system') => {
+        setConversations(prev => prev.map(c =>
+          c.id === activeConversationId
+            ? { ...c, logs: [{ id: generateId(), level, time: now(), message, source }, ...c.logs].slice(0, 100) }
+            : c
+        ));
+      }, [activeConversationId]);
+
+      // ==================== OLLAMA MODEL MANAGEMENT ====================
+
+      // Load and verify model for a repo
+      const loadRepoModel = useCallback(async (repoId) => {
+        const repo = repos.find(r => r.id === repoId);
+        if (!repo || !repo.ollama_model) {
+          addLog('warn', `No ollama_model configured for repo ${repoId}`, 'model');
+          return { success: false, error: 'No model configured' };
+        }
+
+        const configuredModel = repo.ollama_model;
+        addLog('info', `Loading repo model config: ${configuredModel} from ${repo.configSource || 'repo'}`, 'model');
+
+        // Check Ollama availability
+        const verification = await verifyModelAvailability(configuredModel);
+
+        if (!verification.available) {
+          addLog('error', `Model mismatch: ${configuredModel} not found locally. Installed: ${verification.installedModels.join(', ')}`, 'model');
+          setRepoModelState(prev => ({
+            ...prev,
+            [repoId]: {
+              configured: configuredModel,
+              active: null,
+              status: 'unavailable',
+              override: prev[repoId]?.override || null,
+              error: verification.error,
+              installedModels: verification.installedModels,
+              lastVerified: now()
+            }
+          }));
+          return { success: false, error: verification.error, installedModels: verification.installedModels };
+        }
+
+        // Model available - set as active
+        addLog('info', `Model verified: ${configuredModel} available locally`, 'model');
+        setRepoModelState(prev => ({
+          ...prev,
+          [repoId]: {
+            configured: configuredModel,
+            active: configuredModel,
+            status: 'ready',
+            override: null,
+            error: null,
+            installedModels: verification.installedModels,
+            lastVerified: now()
+          }
+        }));
+
+        // Update Ollama connection state
+        setOllamaState(prev => ({
+          ...prev,
+          connected: true,
+          availableModels: verification.installedModels,
+          lastCheck: now()
+        }));
+
+        return { success: true, model: configuredModel };
+      }, [repos, addLog]);
+
+      // Get effective model for current context
+      const getEffectiveModel = useCallback(() => {
+        const state = repoModelState[activeRepoId];
+        if (!state) return null;
+        return state.override || state.active || state.configured;
+      }, [repoModelState, activeRepoId]);
+
+      // Manual model override (explicit user action)
+      const overrideModel = useCallback((repoId, modelTag) => {
+        addLog('info', `Manual model override: ${modelTag} for repo ${repoId}`, 'model');
+        setRepoModelState(prev => ({
+          ...prev,
+          [repoId]: {
+            ...prev[repoId],
+            active: modelTag,
+            override: modelTag,
+            status: 'override',
+            lastVerified: now()
+          }
+        }));
+      }, [addLog]);
+
+      const createConversation = useCallback((title = 'New Conversation', repoId = activeRepoId) => {
+        const conv = {
+          id: `conv-${generateId()}`,
+          title,
+          repoId,
+          model: 'GPT-4',
+          mode: 'Plan',
+          timestamp: now(),
+          messages: [],
+          runtimeStatus: 'idle',
+          runtimeEvents: [],
+          validation: {
+            syntax: { status: 'idle', detail: '' },
+            lint: { status: 'idle', detail: '' },
+            build: { status: 'idle', detail: '' },
+            test: { status: 'idle', detail: '' },
+          },
+          logs: []
+        };
+        setConversations(prev => [conv, ...prev]);
+        setActiveConversationId(conv.id);
+        return conv.id;
+      }, [activeRepoId]);
+
+      const openRepo = useCallback((path, name) => {
+        // Check if already open
+        const existing = repos.find(r => r.path === path);
+        if (existing) {
+          setActiveRepoId(existing.id);
+          // Update last opened
+          setRepos(prev => prev.map(r =>
+            r.id === existing.id ? { ...r, lastOpened: now() } : r
+          ));
+          return existing;
+        }
+
+        // Create new repo entry
+        const repoName = name || path.split('/').pop() || 'untitled';
+        const displayPath = path.replace(/^\/Users\/[^/]+/, '~');
+        const repo = {
+          id: `repo-${generateId()}`,
+          name: repoName,
+          path,
+          displayPath,
+          type: 'folder',
+          gitDetected: false, // Would be detected in real implementation
+          branch: null,
+          lastOpened: now(),
+          isFavorite: false,
+          detectedFiles: []
+        };
+        setRepos(prev => [repo, ...prev]);
+        setActiveRepoId(repo.id);
+        return repo;
+      }, [repos]);
+
+      const switchRepo = useCallback((repoId) => {
+        setActiveRepoId(repoId);
+        const repo = repos.find(r => r.id === repoId);
+        if (repo) {
+          setRepos(prev => prev.map(r =>
+            r.id === repoId ? { ...r, lastOpened: now() } : r
+          ));
+        }
+        return repo;
+      }, [repos]);
+
+      const removeRepo = useCallback((repoId) => {
+        setRepos(prev => prev.filter(r => r.id !== repoId));
+        if (activeRepoId === repoId) {
+          const remaining = repos.filter(r => r.id !== repoId);
+          setActiveRepoId(remaining[0]?.id || null);
+        }
+      }, [activeRepoId, repos]);
+
+      const executeTask = useCallback((conversationId, taskContent) => {
+        // Update conversation status
+        setConversations(prev => prev.map(c =>
+          c.id === conversationId
+            ? { ...c, runtimeStatus: 'running', mode: 'Execute' }
+            : c
+        ));
+
+        // Add system message
+        addSystemMessage(conversationId, `Starting execution: "${taskContent.substring(0, 50)}${taskContent.length > 50 ? '...' : ''}"`);
+
+        // Simulate execution flow
+        setTimeout(() => {
+          addSystemMessage(conversationId, 'Session initialized');
+        }, 300);
+
+        setTimeout(() => {
+          addSystemMessage(conversationId, 'Analyzing task structure...');
+          setConversations(prev => prev.map(c =>
+            c.id === conversationId
+              ? { ...c, runtimeEvents: [...c.runtimeEvents, { time: formatTime(now()), event: 'Planner analyzing task structure' }] }
+              : c
+          ));
+        }, 1000);
+
+        setTimeout(() => {
+          addSystemMessage(conversationId, 'Generated 3-step execution plan');
+          setConversations(prev => prev.map(c =>
+            c.id === conversationId
+              ? { ...c, runtimeEvents: [...c.runtimeEvents, { time: formatTime(now()), event: 'Generated execution plan with 3 steps' }] }
+              : c
+          ));
+        }, 2500);
+
+        setTimeout(() => {
+          addSystemMessage(conversationId, 'Running validation pipeline...');
+          setConversations(prev => prev.map(c =>
+            c.id === conversationId
+              ? { ...c, validation: { ...c.validation, syntax: { status: 'running', detail: 'Checking...' } } }
+              : c
+          ));
+        }, 4000);
+
+        setTimeout(() => {
+          setConversations(prev => prev.map(c =>
+            c.id === conversationId
+              ? {
+                ...c,
+                validation: {
+                  syntax: { status: 'passed', detail: 'No errors' },
+                  lint: { status: 'passed', detail: '2 warnings' },
+                  build: { status: 'passed', detail: 'Success' },
+                  test: { status: 'passed', detail: '42 tests passed' },
+                },
+                runtimeStatus: 'completed'
+              }
+              : c
+          ));
+          addMessage(conversationId, {
+            type: 'assistant',
+            content: 'Task completed successfully.\n\n**Summary:**\n• Analyzed code structure\n• Generated execution plan\n• Applied 3 modifications\n• All validation stages passed\n\nThe changes have been written to the repository.',
+            metadata: { status: 'success' }
+          });
+        }, 7000);
+      }, [addMessage, addSystemMessage]);
+
+      const handleSendMessage = useCallback(async (text) => {
+        if (!text.trim()) return;
+
+        // Add user message
+        addMessage(activeConversationId, { type: 'user', content: text, metadata: {} });
+        setInputValue('');
+
+        // Parse command
+        const command = parseCommand(text);
+
+        // Handle async commands
+        if (command.type === 'open_repo') {
+          const newRepo = openRepo(command.path);
+          addSystemMessage(activeConversationId, `Attached to ${newRepo.gitDetected ? 'repository' : 'folder'} "${newRepo.name}"`);
+
+          // Load and verify Ollama model for this repo
+          const modelResult = await loadRepoModel(newRepo.id);
+
+          let modelInfo = '';
+          if (modelResult.success) {
+            modelInfo = `\n\nModel: \`${modelResult.model}\` (verified locally)`;
+          } else if (newRepo.ollama_model) {
+            modelInfo = `\n\n⚠️ Model \`${newRepo.ollama_model}\` not found locally. Use "list models" to see available models.`;
+          }
+
+          addMessage(activeConversationId, {
+            type: 'assistant',
+            content: `Now working with "${newRepo.name}" at \`${newRepo.displayPath}\`${newRepo.gitDetected ? ` (git branch: ${newRepo.branch})` : ''}.${modelInfo}\n\nDetected: ${newRepo.detectedFiles.slice(0, 3).join(', ')}${newRepo.detectedFiles.length > 3 ? '...' : ''}`,
+            metadata: {}
+          });
+          return;
+        }
+
+        if (command.type === 'switch_repo') {
+          const targetRepo = repos.find(r =>
+            r.name.toLowerCase() === command.name.toLowerCase() ||
+            r.path.toLowerCase().includes(command.name.toLowerCase())
+          );
+          if (targetRepo) {
+            switchRepo(targetRepo.id);
+            addSystemMessage(activeConversationId, `Switched to ${targetRepo.gitDetected ? 'repository' : 'folder'} "${targetRepo.name}"`);
+
+            // Load model for switched repo
+            const modelResult = await loadRepoModel(targetRepo.id);
+
+            let modelInfo = '';
+            if (modelResult.success) {
+              modelInfo = ` Using model \`${modelResult.model}\`.`;
+            } else if (targetRepo.ollama_model) {
+              modelInfo = ` ⚠️ Configured model \`${targetRepo.ollama_model}\` not available.`;
+            }
+
+            addMessage(activeConversationId, {
+              type: 'assistant',
+              content: `Now attached to "${targetRepo.name}" at \`${targetRepo.displayPath}\`${targetRepo.gitDetected ? ` on branch \`${targetRepo.branch}\`` : ''}.${modelInfo}\n\nWhat would you like to work on?`,
+              metadata: {}
+            });
+          } else {
+            addMessage(activeConversationId, {
+              type: 'assistant',
+              content: `I couldn't find a repository matching "${command.name}".\n\nYour available repositories:\n${repos.map(r => `• ${r.name} \`${r.displayPath}\``).join('\n')}`,
+              metadata: {}
+            });
+          }
+          return;
+        }
+
+        if (command.type === 'list_models') {
+          const result = await fetchOllamaModels();
+          if (result.success) {
+            addMessage(activeConversationId, {
+              type: 'assistant',
+              content: `**Installed Ollama models:**\n\n${result.models.map(m => `• \`${m}\``).join('\n')}`,
+              metadata: {}
+            });
+          } else {
+            addMessage(activeConversationId, {
+              type: 'assistant',
+              content: `⚠️ Could not connect to Ollama at ${OLLAMA_CONFIG.endpoint}.\n\nError: ${result.error}`,
+              metadata: {}
+            });
+          }
+          return;
+        }
+
+        setTimeout(() => {
+          switch (command.type) {
+
+            case 'list_repos':
+              addMessage(activeConversationId, {
+                type: 'assistant',
+                content: `**Your repositories:**\n\n${repos.map(r => `${r.id === activeRepoId ? '▸ ' : '  '}${r.name} \`${r.displayPath}\`${r.gitDetected ? ` (${r.branch})` : ''}`).join('\n')}\n\nUse "switch to <repo-name>" to change workspace.`,
+                metadata: {}
+              });
+              break;
+
+            case 'assistant_response':
+              addMessage(activeConversationId, {
+                type: 'assistant',
+                content: command.content,
+                metadata: {}
+              });
+              break;
+
+            case 'show_runtime':
+              setRightPanelMode('runtime');
+              addMessage(activeConversationId, {
+                type: 'assistant',
+                content: 'Opened the runtime panel. You can see execution status and events here.',
+                metadata: {}
+              });
+              break;
+
+            case 'show_logs':
+              setRightPanelMode('logs');
+              addMessage(activeConversationId, {
+                type: 'assistant',
+                content: 'Opened the logs panel. System events and messages are shown here.',
+                metadata: {}
+              });
+              break;
+
+            case 'show_validation':
+              setRightPanelMode('validation');
+              addMessage(activeConversationId, {
+                type: 'assistant',
+                content: 'Opened the validation panel. Pipeline status and results are shown here.',
+                metadata: {}
+              });
+              break;
+
+            case 'help':
+              addMessage(activeConversationId, {
+                type: 'assistant',
+                content: `**Available commands:**\n\n**Repository:**\n• \`open folder /path/to/folder\` - Attach a local folder\n• \`switch to <repo-name>\` - Switch active workspace\n• \`list repos\` - Show all repositories\n\n**Model:**\n• \`list models\` - Show installed Ollama models\n• \`show model\` - Show current model configuration\n\n**Panels:**\n• \`runtime\` - Show runtime inspector\n• \`logs\` - Show logs panel\n• \`validation\` - Show validation panel\n• \`help\` - Show this help\n\nOr just describe a task and I'll execute it in the current workspace using the repo-configured model.`,
+                metadata: {}
+              });
+              break;
+
+            case 'show_model':
+              const modelState = repoModelState[activeRepoId];
+              const currentRepo = repos.find(r => r.id === activeRepoId);
+              if (modelState) {
+                const overrideText = modelState.override ? ` (override: ${modelState.override})` : '';
+                const statusEmoji = modelState.status === 'ready' ? '✓' : modelState.status === 'unavailable' ? '⚠️' : '?';
+                addMessage(activeConversationId, {
+                  type: 'assistant',
+                  content: `**Model Configuration**${overrideText}\n\nConfigured: \`${modelState.configured}\` (from ${currentRepo?.configSource || 'repo'})\nStatus: ${statusEmoji} ${modelState.status}\nActive: \`${modelState.active || 'none'}\`\n\nOllama: ${ollamaState.connected ? 'connected' : 'disconnected'}`,
+                  metadata: {}
+                });
+              } else {
+                addMessage(activeConversationId, {
+                  type: 'assistant',
+                  content: `No model configuration loaded. The repo should have \`ollama_model\` configured.`,
+                  metadata: {}
+                });
+              }
+              break;
+
+            case 'task':
+            default:
+              // Start task execution in current repo context with verified model
+              const taskRepo = repos.find(r => r.id === activeRepoId);
+              const effectiveModel = getEffectiveModel();
+
+              if (!effectiveModel) {
+                addMessage(activeConversationId, {
+                  type: 'assistant',
+                  content: `⚠️ No Ollama model configured or available for this workspace.\n\nPlease:\n1. Ensure the repo has \`ollama_model\` configured\n2. Run \`list models\` to check installed models\n3. Use \`open folder /path\` to attach a properly configured repo`,
+                  metadata: {}
+                });
+                return;
+              }
+
+              addSystemMessage(activeConversationId, `Executing in ${taskRepo?.name || 'workspace'} with model ${effectiveModel}`);
+              addLog('info', `Task started with model: ${effectiveModel}`, 'runtime');
+              addMessage(activeConversationId, {
+                type: 'assistant',
+                content: `I'll help you with that in \`${taskRepo?.name || 'current workspace'}\` using model \`${effectiveModel}\`. Starting execution now...`,
+                metadata: { model: effectiveModel }
+              });
+              executeTask(activeConversationId, command.content);
+              break;
+          }
+        }, 500);
+      }, [activeConversationId, addMessage, addSystemMessage, openRepo, switchRepo, repos, activeRepoId, executeTask, getEffectiveModel, addLog, repoModelState, ollamaState]);
+
+      const deleteConversation = useCallback((conversationId) => {
+        setConversations(prev => prev.filter(c => c.id !== conversationId));
+        if (activeConversationId === conversationId) {
+          const remaining = conversations.filter(c => c.id !== conversationId);
+          setActiveConversationId(remaining[0]?.id || null);
+        }
+      }, [activeConversationId, conversations]);
+
+      const value = {
+        repos, activeRepo, activeRepoId,
+        conversations, activeConversation, activeConversationId,
+        inputValue, setInputValue,
+        rightPanelMode, setRightPanelMode,
+        showSettings, setShowSettings,
+        showRepoPicker, setShowRepoPicker,
+        createConversation, deleteConversation,
+        handleSendMessage, switchRepo, openRepo, removeRepo,
+        shortenPath,
+        // Ollama integration
+        ollamaState,
+        repoModelState,
+        loadRepoModel,
+        overrideModel,
+        getEffectiveModel,
+        fetchOllamaModels,
+        OLLAMA_CONFIG,
+        formatRelative, formatTime
+      };
+
+      return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+    };
+
+    const useApp = () => {
+      const ctx = useContext(AppContext);
+      if (!ctx) throw new Error('useApp must be used within AppProvider');
+      return ctx;
+    };
+
+    // ==================== UI COMPONENTS ====================
+    const Icon = ({ name, size = 16, className = '' }) => {
+      const icons = {
+        chat: '◆', plus: '+', close: '×', send: '→',
+        runtime: '○', validation: '✓', logs: '≡', settings: '⚙',
+        project: '◆', model: '◇', mode: '□', check: '✓'
+      };
+      return <span className={className} style={{ fontSize: size, lineHeight: 1 }}>{icons[name] || name}</span>;
+    };
+
+    const StatusDot = ({ status, size = 6 }) => {
+      const colors = {
+        idle: '#6b7280', running: '#c45c3e', completed: '#5a8f6e',
+        passed: '#5a8f6e', pending: '#4b5563', failed: '#8f4a4a'
+      };
+      const color = colors[status] || colors.idle;
+      return (
+        <div
+          className={status === 'running' ? 'animate-pulse' : ''}
+          style={{ width: size, height: size, borderRadius: '50%', background: color }}
+        />
+      );
+    };
+
+    // ==================== SIDEBAR: CONVERSATION LIST ====================
+    const Sidebar = () => {
+      const { conversations, activeConversationId, setActiveConversationId, createConversation, activeRepo, shortenPath, setShowSettings } = useApp();
+
+      return (
+        <aside className="w-[280px] h-screen flex flex-col custom-scrollbar" style={{ background: 'var(--bg-sidebar)' }}>
+          {/* Header */}
+          <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
+            <div className="ember-dot"></div>
+            <span className="text-[14px] font-medium tracking-wide" style={{ color: 'var(--text-muted)' }}>Rasputin</span>
+          </div>
+
+          {/* New Chat Button */}
+          <div className="px-4 pb-3">
+            <button
+              onClick={() => createConversation()}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-[12px] font-medium transition-all hover:brightness-110"
+              style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}
+            >
+              <Icon name="plus" size={12} /> New Chat
+            </button>
+          </div>
+
+          {/* Active Repository Card */}
+          <div className="px-4 pb-4">
+            <div className="p-3 rounded-lg" style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-subtle)' }}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-subtle)' }}>Workspace</div>
+                {activeRepo?.gitDetected && (
+                  <div className="flex items-center gap-1 text-[10px]" style={{ color: 'var(--text-dim)' }}>
+                    <span>git</span>
+                    <span className="px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-raised)' }}>{activeRepo.branch}</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-start gap-2">
+                <Icon name="project" size={14} className="mt-0.5 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[13px] font-medium truncate" style={{ color: 'var(--text-soft)' }}>{activeRepo?.name || 'No workspace'}</div>
+                  <div className="text-[11px] truncate mt-0.5" style={{ color: 'var(--text-subtle)' }}>{activeRepo ? shortenPath(activeRepo.displayPath, 30) : 'Open a folder to begin'}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Conversations List */}
+          <div className="flex-1 px-3 overflow-y-auto min-h-0">
+            {conversations.length === 0 ? (
+              <div className="px-4 py-8 text-center">
+                <div className="text-[13px] mb-1" style={{ color: 'var(--text-muted)' }}>No conversations</div>
+                <div className="text-[11px]" style={{ color: 'var(--text-subtle)' }}>Click "New Chat" to start</div>
+              </div>
+            ) : (
+              <>
+                <div className="text-[10px] uppercase tracking-wider mb-2 px-3 pt-2" style={{ color: 'var(--text-dim)' }}>Conversations</div>
+                <div className="space-y-0.5">
+                  {conversations.map(conv => (
+                    <div
+                      key={conv.id}
+                      onClick={() => setActiveConversationId(conv.id)}
+                      className="group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-all"
+                      style={{
+                        background: conv.id === activeConversationId ? 'var(--bg-panel)' : 'transparent',
+                        borderLeft: conv.id === activeConversationId ? '2px solid var(--accent)' : '2px solid transparent',
+                      }}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] truncate font-medium" style={{ color: conv.id === activeConversationId ? 'var(--text-soft)' : 'var(--text-muted)' }}>{conv.title}</div>
+                        <div className="text-[11px] flex items-center gap-2 mt-0.5" style={{ color: 'var(--text-subtle)' }}>
+                          <StatusDot status={conv.runtimeStatus} size={4} />
+                          <span className="opacity-70">{conv.model}</span>
+                          <span className="opacity-40">·</span>
+                          <span className="opacity-70">{conv.mode}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Settings */}
+          <div className="p-3 mt-auto" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] transition-all hover:bg-white/[0.02]"
+              style={{ color: 'var(--text-subtle)' }}
+            >
+              <span className="opacity-60"><Icon name="settings" size={14} /></span>
+              <span>Settings</span>
+            </button>
+          </div>
+        </aside>
+      );
+    };
+
+    // ==================== CHAT MESSAGE ====================
+    const ChatMessage = ({ message }) => {
+      const isUser = message.type === 'user';
+      const isSystem = message.type === 'system';
+
+      if (isSystem) {
+        return (
+          <div className="flex items-center justify-center py-4">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full" style={{ background: 'var(--bg-raised)' }}>
+              <StatusDot status="running" size={5} />
+              <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>{message.content}</span>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex gap-3 py-5 animate-fade-in">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-[12px] font-medium"
+            style={{
+              background: isUser ? 'var(--accent-soft)' : 'var(--bg-raised)',
+              color: isUser ? 'var(--accent)' : 'var(--text-muted)'
+            }}
+          >
+            {isUser ? 'You' : 'R'}
+          </div>
+          <div className="flex-1 min-w-0 pt-1">
+            <div className="text-[13px] font-semibold mb-1.5" style={{ color: 'var(--text-soft)' }}>
+              {isUser ? 'You' : 'Rasputin'}
+            </div>
+            <div
+              className="text-[14px] leading-[1.7] whitespace-pre-wrap"
+              style={{ color: isUser ? 'var(--text-soft)' : 'var(--text-muted)' }}
+            >
+              {message.content}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // ==================== CHAT COMPOSER ====================
+    const ChatComposer = () => {
+      const { inputValue, setInputValue, handleSendMessage, activeConversation, activeRepoId, repoModelState } = useApp();
+      const textareaRef = useRef(null);
+
+      // Get effective model for display
+      const modelState = repoModelState[activeRepoId];
+      const effectiveModel = modelState?.active || modelState?.configured;
+      const modelStatus = modelState?.status;
+
+      useEffect(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+          textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px';
+        }
+      }, [inputValue]);
+
+      const handleSubmit = () => {
+        if (inputValue.trim()) {
+          handleSendMessage(inputValue.trim());
+        }
+      };
+
+      const hasContent = inputValue.trim().length > 0;
+
+      return (
+        <div className="px-6 py-5" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
+              placeholder="Message Rasputin..."
+              className="w-full px-4 py-3.5 pr-14 rounded-xl text-[15px] resize-none outline-none transition-all"
+              style={{
+                background: 'var(--bg-panel)',
+                color: 'var(--text-soft)',
+                minHeight: '56px',
+                maxHeight: '200px',
+                border: '1px solid var(--border-subtle)',
+                lineHeight: '1.5'
+              }}
+              rows={1}
+            />
+            <button
+              onClick={handleSubmit}
+              disabled={!hasContent}
+              className="absolute right-2 bottom-2 w-9 h-9 rounded-lg flex items-center justify-center transition-all"
+              style={{
+                background: hasContent ? 'var(--accent)' : 'transparent',
+                color: hasContent ? '#fff' : 'var(--text-dim)',
+                cursor: hasContent ? 'pointer' : 'not-allowed',
+                opacity: hasContent ? 1 : 0.5,
+                transform: hasContent ? 'scale(1)' : 'scale(0.95)'
+              }}
+            >
+              <Icon name="send" size={16} />
+            </button>
+          </div>
+          <div className="flex items-center justify-between mt-3 px-1">
+            <div className="flex items-center gap-4 text-[12px]">
+              <span className="flex items-center gap-1.5" style={{ color: effectiveModel ? 'var(--text-soft)' : 'var(--text-dim)' }}>
+                <Icon name="model" size={11} />
+                {effectiveModel ? (
+                  <span className="flex items-center gap-1.5">
+                    <span style={{
+                      color: modelStatus === 'ready' ? '#5a8f6e' :
+                        modelStatus === 'unavailable' ? 'var(--accent)' : 'var(--text-dim)'
+                    }}>
+                      {modelStatus === 'ready' ? '●' : modelStatus === 'unavailable' ? '○' : '◐'}
+                    </span>
+                    <span className="font-mono">{effectiveModel}</span>
+                    {modelState?.override && <span className="opacity-50 text-[10px]">override</span>}
+                  </span>
+                ) : (
+                  <span className="opacity-50">No model configured</span>
+                )}
+              </span>
+              <span className="flex items-center gap-1.5" style={{ color: 'var(--text-subtle)' }}>
+                <Icon name="mode" size={11} />
+                {activeConversation?.mode || 'Plan'}
+              </span>
+            </div>
+            <span className="text-[12px]" style={{ color: 'var(--text-dim)' }}>
+              <kbd className="px-1.5 py-0.5 rounded text-[10px]" style={{ background: 'var(--bg-raised)', color: 'var(--text-subtle)' }}>Enter</kbd> to send
+            </span>
+          </div>
+        </div>
+      );
+    };
+
+    // ==================== CHAT THREAD ====================
+    const ChatThread = () => {
+      const { activeConversation, activeRepo, activeRepoId, repoModelState, setRightPanelMode, rightPanelMode, shortenPath } = useApp();
+      const messagesEndRef = useRef(null);
+
+      useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [activeConversation?.messages]);
+
+      const nonSystemCount = activeConversation?.messages.filter(m => m.type !== 'system').length || 0;
+
+      // Get model info for display
+      const modelState = repoModelState[activeRepoId];
+      const effectiveModel = modelState?.active || modelState?.configured;
+      const modelStatus = modelState?.status;
+
+      return (
+        <div className="flex-1 flex flex-col min-w-0" style={{ background: 'var(--bg-page)' }}>
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3">
+                <div className="text-[16px] font-semibold truncate" style={{ color: 'var(--text-soft)' }}>
+                  {activeConversation?.title || 'New Conversation'}
+                </div>
+                {activeConversation?.runtimeStatus === 'running' && (
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: 'var(--accent)' }}></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2" style={{ background: 'var(--accent)' }}></span>
+                  </span>
+                )}
+              </div>
+              <div className="text-[12px] flex items-center gap-2 mt-1.5" style={{ color: 'var(--text-subtle)' }}>
+                <span className="flex items-center gap-1.5">
+                  <Icon name="project" size={11} />
+                  <span className="truncate max-w-[180px]">{activeRepo?.name || 'No workspace'}</span>
+                </span>
+                <span className="opacity-30">|</span>
+                {effectiveModel ? (
+                  <span className="flex items-center gap-1.5" title={modelStatus === 'ready' ? 'Model verified' : modelStatus}>
+                    <span className="text-[10px]" style={{
+                      color: modelStatus === 'ready' ? '#5a8f6e' :
+                        modelStatus === 'unavailable' ? 'var(--accent)' : 'var(--text-dim)'
+                    }}>
+                      {modelStatus === 'ready' ? '●' : modelStatus === 'unavailable' ? '○' : '◐'}
+                    </span>
+                    <span className="font-mono">{effectiveModel}</span>
+                    {modelState?.override && <span className="text-[10px] opacity-60">(override)</span>}
+                  </span>
+                ) : (
+                  <span className="opacity-60">No model</span>
+                )}
+                <span className="opacity-30">|</span>
+                <span className="capitalize">{activeConversation?.runtimeStatus || 'idle'}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setRightPanelMode(rightPanelMode ? null : 'runtime')}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] transition-all hover:bg-white/[0.02]"
+                style={{
+                  color: rightPanelMode ? 'var(--text-soft)' : 'var(--text-subtle)',
+                  background: rightPanelMode ? 'var(--bg-panel)' : 'transparent',
+                  border: '1px solid ' + (rightPanelMode ? 'var(--border-light)' : 'transparent')
+                }}
+              >
+                <Icon name="runtime" size={12} />
+                <span className="capitalize">{activeConversation?.runtimeStatus || 'idle'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto px-6 custom-scrollbar">
+            {activeConversation?.messages.length === 0 ? (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center max-w-md px-6">
+                  <div className="text-[20px] font-medium mb-3" style={{ color: 'var(--text-muted)' }}>Start a conversation</div>
+                  <div className="text-[14px] leading-relaxed mb-5" style={{ color: 'var(--text-subtle)' }}>
+                    Type a message to begin working with Rasputin
+                  </div>
+                  <div className="text-[13px] space-y-2" style={{ color: 'var(--text-dim)' }}>
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="opacity-60">•</span>
+                      <span>Open a folder with <code className="px-1.5 py-0.5 rounded text-[11px]" style={{ background: 'var(--bg-raised)' }}>open folder /path</code></span>
+                    </div>
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="opacity-60">•</span>
+                      <span>Switch repos with <code className="px-1.5 py-0.5 rounded text-[11px]" style={{ background: 'var(--bg-raised)' }}>switch to &lt;name&gt;</code></span>
+                    </div>
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="opacity-60">•</span>
+                      <span>Type <code className="px-1.5 py-0.5 rounded text-[11px]" style={{ background: 'var(--bg-raised)' }}>/help</code> for all commands</span>
+                    </div>
+                  </div>
+
+                  {activeRepo && (
+                    <div className="mt-6 pt-5" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                      <div className="text-[11px] uppercase tracking-wider mb-2" style={{ color: 'var(--text-dim)' }}>Current Workspace</div>
+                      <div className="flex items-center justify-center gap-2 text-[13px]" style={{ color: 'var(--text-muted)' }}>
+                        <Icon name="project" size={12} />
+                        <span className="font-medium">{activeRepo.name}</span>
+                        <span className="opacity-60">{shortenPath(activeRepo.displayPath, 30)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <>
+                {activeConversation?.messages.map((msg, i) => (
+                  <ChatMessage key={msg.id || i} message={msg} />
+                ))}
+                <div ref={messagesEndRef} className="h-4" />
+              </>
+            )}
+          </div>
+
+          {/* Composer */}
+          <ChatComposer />
+        </div>
+      );
+    };
+
+    // ==================== RIGHT PANEL: INSPECTOR ====================
+    const InspectorPanel = () => {
+      const {
+        rightPanelMode, setRightPanelMode,
+        activeConversation, activeRepo, activeRepoId,
+        ollamaState, repoModelState, OLLAMA_CONFIG,
+        formatTime
+      } = useApp();
+
+      if (!rightPanelMode) return null;
+
+      const validation = activeConversation?.validation;
+      const events = activeConversation?.runtimeEvents || [];
+      const logs = activeConversation?.logs || [];
+
+      // Get current model state for this repo
+      const currentModelState = repoModelState[activeRepoId];
+
+      // Empty state components
+      const EmptyState = ({ icon, title, subtitle }) => (
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-3" style={{ background: 'var(--bg-raised)', color: 'var(--text-dim)' }}>
+            <Icon name={icon} size={18} />
+          </div>
+          <div className="text-[14px] font-medium mb-1" style={{ color: 'var(--text-muted)' }}>{title}</div>
+          <div className="text-[12px]" style={{ color: 'var(--text-subtle)' }}>{subtitle}</div>
+        </div>
+      );
+
+      return (
+        <div className="w-[320px] h-screen flex flex-col custom-scrollbar" style={{ background: 'var(--bg-sidebar)' }}>
+          {/* Panel Tabs */}
+          <div className="flex items-center px-3 py-3" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+            {['runtime', 'validation', 'logs'].map((mode, i) => (
+              <button
+                key={mode}
+                onClick={() => setRightPanelMode(mode)}
+                className="flex-1 px-3 py-2 rounded-lg text-[12px] font-medium capitalize transition-all"
+                style={{
+                  background: rightPanelMode === mode ? 'var(--bg-panel)' : 'transparent',
+                  color: rightPanelMode === mode ? 'var(--text-soft)' : 'var(--text-subtle)',
+                  border: rightPanelMode === mode ? '1px solid var(--border-light)' : '1px solid transparent'
+                }}
+              >
+                {mode}
+              </button>
+            ))}
+            <div className="w-px h-6 mx-2" style={{ background: 'var(--border-subtle)' }} />
+            <button
+              onClick={() => setRightPanelMode(null)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg transition-all hover:bg-white/[0.03]"
+              style={{ color: 'var(--text-subtle)' }}
+              title="Close panel"
+            >
+              <Icon name="close" size={14} />
+            </button>
+          </div>
+
+          {/* Panel Content */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {rightPanelMode === 'runtime' && (
+              <div className="space-y-5">
+                {/* Ollama Provider Card */}
+                <div className="p-4 rounded-xl" style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-subtle)' }}>
+                  <div className="text-[11px] uppercase tracking-wider mb-3" style={{ color: 'var(--text-subtle)' }}>Ollama Provider</div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Endpoint</span>
+                      <span className="text-[12px] font-mono" style={{ color: 'var(--text-soft)' }}>{OLLAMA_CONFIG.endpoint}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Status</span>
+                      <span className="flex items-center gap-1.5 text-[12px]">
+                        <StatusDot status={ollamaState.connected ? 'passed' : 'idle'} size={6} />
+                        <span style={{ color: ollamaState.connected ? '#5a8f6e' : 'var(--text-subtle)' }}>
+                          {ollamaState.connected ? 'Connected' : 'Disconnected'}
+                        </span>
+                      </span>
+                    </div>
+                    {ollamaState.availableModels.length > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Installed</span>
+                        <span className="text-[12px]" style={{ color: 'var(--text-soft)' }}>{ollamaState.availableModels.length} models</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Model Configuration Card */}
+                <div className="p-4 rounded-xl" style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-subtle)' }}>
+                  <div className="text-[11px] uppercase tracking-wider mb-3" style={{ color: 'var(--text-subtle)' }}>Model Configuration</div>
+                  {currentModelState ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Configured</span>
+                        <span className="text-[12px] font-mono" style={{ color: 'var(--text-soft)' }}>{currentModelState.configured}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Status</span>
+                        <span className="flex items-center gap-1.5 text-[12px]">
+                          {currentModelState.status === 'ready' && <Icon name="check" size={10} />}
+                          <span style={{
+                            color: currentModelState.status === 'ready' ? '#5a8f6e' :
+                              currentModelState.status === 'unavailable' ? 'var(--accent)' : 'var(--text-subtle)'
+                          }}>
+                            {currentModelState.status === 'ready' ? 'Verified' :
+                              currentModelState.status === 'unavailable' ? 'Not found' :
+                                currentModelState.status}
+                          </span>
+                        </span>
+                      </div>
+                      {currentModelState.active && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Active</span>
+                          <span className="text-[12px] font-mono px-2 py-0.5 rounded" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                            {currentModelState.active}
+                          </span>
+                        </div>
+                      )}
+                      {currentModelState.override && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Override</span>
+                          <span className="text-[12px] font-mono" style={{ color: 'var(--accent)' }}>{currentModelState.override}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-[12px]" style={{ color: 'var(--text-dim)' }}>
+                      No model loaded. Attach a repo with ollama_model configured.
+                    </div>
+                  )}
+                </div>
+
+                {/* Session Status Card */}
+                <div className="p-4 rounded-xl" style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-subtle)' }}>
+                  <div className="text-[11px] uppercase tracking-wider mb-3" style={{ color: 'var(--text-subtle)' }}>Session Status</div>
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <StatusDot status={activeConversation?.runtimeStatus} size={10} />
+                      {activeConversation?.runtimeStatus === 'running' && (
+                        <span className="absolute inline-flex h-full w-full rounded-full opacity-30 animate-ping" style={{ background: 'var(--accent)' }}></span>
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-[15px] font-semibold capitalize" style={{ color: 'var(--text-soft)' }}>
+                        {activeConversation?.runtimeStatus || 'Idle'}
+                      </div>
+                      <div className="text-[12px] mt-0.5" style={{ color: 'var(--text-subtle)' }}>
+                        {activeConversation?.runtimeStatus === 'running' ? 'Processing task...' :
+                          activeConversation?.runtimeStatus === 'completed' ? 'Task completed successfully' :
+                            'Ready to execute'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Events Section */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--text-subtle)' }}>Events</div>
+                    {events.length > 0 && (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: 'var(--bg-raised)', color: 'var(--text-subtle)' }}>
+                        {events.length}
+                      </span>
+                    )}
+                  </div>
+
+                  {events.length === 0 ? (
+                    <EmptyState
+                      icon="runtime"
+                      title="No events yet"
+                      subtitle="Runtime events will appear here during execution"
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      {events.map((evt, i) => (
+                        <div key={i} className="flex items-start gap-3 p-3 rounded-lg" style={{ background: 'var(--bg-panel)' }}>
+                          <span className="text-[11px] font-mono shrink-0 pt-0.5" style={{ color: 'var(--text-dim)' }}>{evt.time}</span>
+                          <span className="text-[13px]" style={{ color: 'var(--text-muted)' }}>{evt.event}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {rightPanelMode === 'validation' && (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--text-subtle)' }}>Validation Pipeline</div>
+                  {validation && Object.values(validation).some(v => v.status !== 'idle') && (
+                    <StatusDot status={
+                      Object.values(validation).some(v => v.status === 'running') ? 'running' :
+                        Object.values(validation).every(v => v.status === 'passed') ? 'passed' : 'idle'
+                    } size={8} />
+                  )}
+                </div>
+
+                {!validation || Object.values(validation).every(v => v.status === 'idle') ? (
+                  <EmptyState
+                    icon="validation"
+                    title="No validation activity"
+                    subtitle="Validation stages will appear when a task runs"
+                  />
+                ) : (
+                  <div className="space-y-2">
+                    {Object.entries(validation).map(([stage, data]) => (
+                      <div
+                        key={stage}
+                        className="flex items-center justify-between p-4 rounded-xl"
+                        style={{
+                          background: data.status === 'running' ? 'var(--accent-soft)' : 'var(--bg-panel)',
+                          border: data.status === 'running' ? '1px solid rgba(196, 92, 62, 0.2)' : '1px solid var(--border-subtle)'
+                        }}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-medium"
+                            style={{
+                              background: data.status === 'passed' ? 'rgba(90, 143, 110, 0.2)' :
+                                data.status === 'running' ? 'var(--accent)' :
+                                  'var(--bg-raised)',
+                              color: data.status === 'passed' ? '#5a8f6e' :
+                                data.status === 'running' ? '#fff' :
+                                  'var(--text-dim)'
+                            }}
+                          >
+                            {data.status === 'passed' ? '✓' : data.status === 'running' ? '◐' : '○'}
+                          </div>
+                          <span className="text-[14px] font-medium capitalize" style={{ color: 'var(--text-soft)' }}>{stage}</span>
+                        </div>
+                        <span className="text-[12px]" style={{ color: 'var(--text-subtle)' }}>
+                          {data.detail || (data.status === 'idle' ? 'Waiting' : data.status)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {rightPanelMode === 'logs' && (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--text-subtle)' }}>System Logs</div>
+                  {logs.length > 0 && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: 'var(--bg-raised)', color: 'var(--text-subtle)' }}>
+                      {logs.length}
+                    </span>
+                  )}
+                </div>
+
+                {logs.length === 0 ? (
+                  <EmptyState
+                    icon="logs"
+                    title="No logs yet"
+                    subtitle="System logs for this conversation will appear here"
+                  />
+                ) : (
+                  <div className="space-y-2">
+                    {logs.map((log, i) => (
+                      <div key={i} className="p-3 rounded-lg text-[12px]" style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-subtle)' }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] font-mono" style={{ color: 'var(--text-dim)' }}>{formatTime(log.time)}</span>
+                          <span className="text-[10px] uppercase px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-raised)', color: 'var(--text-subtle)' }}>{log.level}</span>
+                        </div>
+                        <div style={{ color: 'var(--text-muted)' }}>{log.message}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    // ==================== SETTINGS MODAL ====================
+    const SettingsModal = () => {
+      const { setShowSettings } = useApp();
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}>
+          <div className="w-full max-w-md rounded-xl p-6" style={{ background: 'var(--bg-panel)', boxShadow: '0 24px 48px rgba(0,0,0,0.5)' }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[16px] font-medium" style={{ color: 'var(--text-soft)' }}>Settings</h3>
+              <button onClick={() => setShowSettings(false)} className="w-6 h-6 flex items-center justify-center" style={{ color: 'var(--text-subtle)' }}>
+                <Icon name="close" size={14} />
+              </button>
+            </div>
+            <div className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
+              Settings panel - to be implemented.
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // ==================== MAIN APP ====================
+    const App = () => {
+      const { showSettings, rightPanelMode } = useApp();
+
+      return (
+        <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-page)' }}>
+          <Sidebar />
+          <div className="w-px shrink-0" style={{ background: 'var(--border-subtle)' }} />
+          <ChatThread />
+          {rightPanelMode && (
+            <>
+              <div className="w-px shrink-0" style={{ background: 'var(--border-subtle)' }} />
+              <InspectorPanel />
+            </>
+          )}
+          {showSettings && <SettingsModal />}
+        </div>
+      );
+    };
+
+    const Root = () => (
+      <AppProvider>
+        <App />
+      </AppProvider>
+    );
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "description": "Gated live-model replacement benchmark for Rasputin/Forge. These tasks are intentionally outside deterministic CI.",
+  "tasks": [
+    {
+      "id": "single_file_edit",
+      "category": "Single-file edit",
+      "fixture": "rust_lib_basic",
+      "max_iterations": 8,
+      "task": "Read Cargo.toml and src/lib.rs first. Add a public function `double(n: i32) -> i32` to src/lib.rs that returns n * 2. Complete only after cargo test passes.",
+      "validators": [
+        {"type": "file_contains", "path": "src/lib.rs", "text": "pub fn double"},
+        {"type": "file_contains", "path": "src/lib.rs", "text": "n * 2"},
+        {"type": "cargo_test"}
+      ]
+    },
+    {
+      "id": "multi_file_feature",
+      "category": "Multi-file feature addition",
+      "fixture": "rust_lib_feature",
+      "max_iterations": 10,
+      "task": "Read Cargo.toml, src/lib.rs, and tests/feature_tests.rs. Implement the missing math module so `triple(4)` returns 12 and `is_even(6)` returns true. Expose the module from src/lib.rs. Complete only after cargo test passes.",
+      "validators": [
+        {"type": "file_exists", "path": "src/math.rs"},
+        {"type": "file_contains", "path": "src/lib.rs", "text": "pub mod math"},
+        {"type": "cargo_test"}
+      ]
+    },
+    {
+      "id": "refactor_with_validation",
+      "category": "Refactor with validation",
+      "fixture": "rust_refactor",
+      "max_iterations": 10,
+      "task": "Read src/lib.rs and tests/refactor_tests.rs. Refactor the repeated prefix formatting logic into a private helper without changing behavior. Complete only after cargo test passes.",
+      "validators": [
+        {"type": "file_contains", "path": "src/lib.rs", "text": "fn format_with_prefix"},
+        {"type": "cargo_test"}
+      ]
+    },
+    {
+      "id": "bug_fix_from_failing_test",
+      "category": "Bug fix from failing test",
+      "fixture": "rust_bug",
+      "max_iterations": 10,
+      "task": "Run or inspect the tests, find the failing arithmetic bug, and fix the implementation. Complete only after cargo test passes.",
+      "validators": [
+        {"type": "file_contains", "path": "src/lib.rs", "text": "a + b"},
+        {"type": "cargo_test"}
+      ]
+    },
+    {
+      "id": "seeded_compile_error_recovery",
+      "category": "Seeded compile error recovery",
+      "fixture": "rust_compile_error",
+      "max_iterations": 10,
+      "task": "This project has a compile error. Read src/lib.rs, repair the compile error, and complete only after cargo check and cargo test pass.",
+      "validators": [
+        {"type": "cargo_check"},
+        {"type": "cargo_test"}
+      ]
+    },
+    {
+      "id": "seeded_validation_failure_recovery",
+      "category": "Seeded validation failure recovery",
+      "fixture": "rust_validation_failure",
+      "max_iterations": 10,
+      "task": "The implementation compiles but the validation tests fail. Read src/lib.rs and tests/validation_tests.rs, fix the behavior, and complete only after cargo test passes.",
+      "validators": [
+        {"type": "cargo_test"},
+        {"type": "file_contains", "path": "src/lib.rs", "text": "trim()"}
+      ]
+    },
+    {
+      "id": "repo_onboarding_find_change",
+      "category": "Repo onboarding / find-and-change task",
+      "fixture": "rust_find_change",
+      "max_iterations": 10,
+      "task": "Onboard to this small repo. Find the default request timeout constant and change it from 1000 milliseconds to 5000 milliseconds without changing the public API. Complete only after cargo test passes.",
+      "validators": [
+        {"type": "file_contains", "path": "src/config.rs", "text": "5000"},
+        {"type": "cargo_test"}
+      ]
+    },
+    {
+      "id": "vertical_slice",
+      "category": "Small end-to-end vertical slice",
+      "fixture": "rust_vertical_slice",
+      "max_iterations": 12,
+      "task": "Read the whole crate. Add a small end-to-end settings parser: expose `parse_setting(input: &str) -> Option<Setting>` where `Setting` has `key` and `value` strings. It should parse `name=value`, trim whitespace, reject empty keys, and pass the existing tests. Complete only after cargo test passes.",
+      "validators": [
+        {"type": "file_contains", "path": "src/lib.rs", "text": "pub struct Setting"},
+        {"type": "file_contains", "path": "src/lib.rs", "text": "parse_setting"},
+        {"type": "cargo_test"}
+      ]
+    }
+  ]
+}

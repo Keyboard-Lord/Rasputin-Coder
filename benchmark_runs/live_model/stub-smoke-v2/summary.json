@@ -1,0 +1,71 @@
+{
+  "run_dir": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/stub-smoke-v2",
+  "model": "qwen2.5-coder:14b",
+  "endpoint": "http://127.0.0.1:11434",
+  "installed_models": [
+    "llama3.1:latest",
+    "qwen2.5-coder:14b",
+    "qwen2.5-coder:latest",
+    "qwen3.5:latest"
+  ],
+  "total": 1,
+  "pass": 0,
+  "partial": 1,
+  "fail": 0,
+  "pass_rate": 0.0,
+  "partial_rate": 1.0,
+  "fail_rate": 0.0,
+  "average_recovery_events": 0.0,
+  "average_operator_interventions": 0.0,
+  "final_replacement_verdict": "usable with caveats",
+  "tasks": [
+    {
+      "id": "single_file_edit",
+      "category": "Single-file edit",
+      "task": "Read Cargo.toml and src/lib.rs first. Add a public function `double(n: i32) -> i32` to src/lib.rs that returns n * 2. Complete only after cargo test passes.",
+      "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/stub-smoke-v2/workspaces/single_file_edit",
+      "model": "qwen2.5-coder:14b",
+      "planner": "stub",
+      "exit_code": 0,
+      "wall_clock_seconds": 0.44,
+      "classification": "PARTIAL",
+      "validators": [
+        {
+          "name": "file_contains:src/lib.rs",
+          "passed": false,
+          "detail": "expected substring: pub fn double"
+        },
+        {
+          "name": "file_contains:src/lib.rs",
+          "passed": false,
+          "detail": "expected substring: n * 2"
+        },
+        {
+          "name": "cargo_test",
+          "passed": false,
+          "detail": "error[E0432]: unresolved import `bench_single_file::double`\n --> tests/double_tests.rs:1:5\n  |\n1 | use bench_single_file::double;\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^ no `double` in the root\n\nFor more information about this error, try `rustc --explain E0432`.\nerror: could not compile `bench_single_file` (test \"double_tests\") due to 1 previous error"
+        }
+      ],
+      "runtime_success": true,
+      "validator_count": 3,
+      "validators_passed": 0,
+      "event_count": 60,
+      "iterations_observed": 3,
+      "timed_out": false,
+      "mutating_tool_succeeded": true,
+      "trust": {
+        "audit_log_complete": true,
+        "jsonl_parse_errors": 0,
+        "validation_observed": true,
+        "replay_consistency": "not_checked_worker_cli",
+        "checkpoint_continuity": "not_checked_worker_cli",
+        "no_runtime_error": true
+      },
+      "recovery": {
+        "failure_events": 0,
+        "recovery_events": 0,
+        "retry_stayed_within_policy": true
+      }
+    }
+  ]
+}

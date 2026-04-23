@@ -1,0 +1,31 @@
+{
+  "task": "create a rust CLI that prints hello world\n\nContext: Directory contains no existing Rust project files. Recent structure: empty directory.",
+  "session_id": "forge-20260419-012345-0001",
+  "iteration": 0,
+  "max_iterations": 10,
+  "files_read": [],
+  "files_written": [],
+  "available_tools": [
+    {
+      "name": "write_file",
+      "description": "Write content to a file",
+      "required_args": ["path", "content"],
+      "optional_args": []
+    },
+    {
+      "name": "read_file",
+      "description": "Read file content",
+      "required_args": ["path"],
+      "optional_args": ["offset", "limit"]
+    },
+    {
+      "name": "apply_patch",
+      "description": "Apply a patch to a file",
+      "required_args": ["file_path", "old_text", "new_text", "expected_hash"],
+      "optional_args": []
+    }
+  ],
+  "recent_executions": [],
+  "recent_errors": [],
+  "mode": "Edit"
+}

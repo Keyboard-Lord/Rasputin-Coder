@@ -1,0 +1,382 @@
+{
+  "run_dir": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-20260422-v2",
+  "model": "qwen2.5-coder:14b",
+  "endpoint": "http://127.0.0.1:11434",
+  "installed_models": [
+    "llama3.1:latest",
+    "qwen2.5-coder:14b",
+    "qwen2.5-coder:latest",
+    "qwen3.5:latest"
+  ],
+  "total": 8,
+  "pass": 0,
+  "partial": 2,
+  "fail": 6,
+  "pass_rate": 0.0,
+  "partial_rate": 0.25,
+  "fail_rate": 0.75,
+  "average_recovery_events": 0.0,
+  "average_operator_interventions": 0.0,
+  "final_replacement_verdict": "not ready",
+  "tasks": [
+    {
+      "id": "single_file_edit",
+      "category": "Single-file edit",
+      "task": "Read Cargo.toml and src/lib.rs first. Add a public function `double(n: i32) -> i32` to src/lib.rs that returns n * 2. Complete only after cargo test passes.",
+      "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-20260422-v2/workspaces/single_file_edit",
+      "model": "qwen2.5-coder:14b",
+      "planner": "http",
+      "exit_code": 1,
+      "wall_clock_seconds": 28.14,
+      "classification": "FAIL",
+      "validators": [
+        {
+          "name": "file_contains:src/lib.rs",
+          "passed": false,
+          "detail": "expected substring: pub fn double"
+        },
+        {
+          "name": "file_contains:src/lib.rs",
+          "passed": false,
+          "detail": "expected substring: n * 2"
+        },
+        {
+          "name": "cargo_test",
+          "passed": false,
+          "detail": "error[E0432]: unresolved import `bench_single_file::double`\n --> tests/double_tests.rs:1:5\n  |\n1 | use bench_single_file::double;\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^ no `double` in the root\n\nFor more information about this error, try `rustc --explain E0432`.\nerror: could not compile `bench_single_file` (test \"double_tests\") due to 1 previous error"
+        }
+      ],
+      "runtime_success": false,
+      "validator_count": 3,
+      "validators_passed": 0,
+      "event_count": 93,
+      "iterations_observed": 8,
+      "timed_out": false,
+      "mutating_tool_succeeded": false,
+      "trust": {
+        "audit_log_complete": true,
+        "jsonl_parse_errors": 0,
+        "validation_observed": false,
+        "replay_consistency": "not_checked_worker_cli",
+        "checkpoint_continuity": "not_checked_worker_cli",
+        "no_runtime_error": true
+      },
+      "recovery": {
+        "failure_events": 1,
+        "recovery_events": 0,
+        "retry_stayed_within_policy": true
+      }
+    },
+    {
+      "id": "multi_file_feature",
+      "category": "Multi-file feature addition",
+      "task": "Read Cargo.toml, src/lib.rs, and tests/feature_tests.rs. Implement the missing math module so `triple(4)` returns 12 and `is_even(6)` returns true. Expose the module from src/lib.rs. Complete only after cargo test passes.",
+      "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-20260422-v2/workspaces/multi_file_feature",
+      "model": "qwen2.5-coder:14b",
+      "planner": "http",
+      "exit_code": 1,
+      "wall_clock_seconds": 34.22,
+      "classification": "PARTIAL",
+      "validators": [
+        {
+          "name": "file_exists:src/math.rs",
+          "passed": false,
+          "detail": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-20260422-v2/workspaces/multi_file_feature/src/math.rs"
+        },
+        {
+          "name": "file_contains:src/lib.rs",
+          "passed": false,
+          "detail": "expected substring: pub mod math"
+        },
+        {
+          "name": "cargo_test",
+          "passed": false,
+          "detail": "error[E0432]: unresolved import `bench_feature::math`\n --> tests/feature_tests.rs:1:20\n  |\n1 | use bench_feature::math::{is_even, triple};\n  |                    ^^^^ could not find `math` in `bench_feature`\n\nFor more information about this error, try `rustc --explain E0432`.\nerror: could not compile `bench_feature` (test \"feature_tests\") due to 1 previous error"
+        }
+      ],
+      "runtime_success": false,
+      "validator_count": 3,
+      "validators_passed": 0,
+      "event_count": 122,
+      "iterations_observed": 9,
+      "timed_out": false,
+      "mutating_tool_succeeded": true,
+      "trust": {
+        "audit_log_complete": true,
+        "jsonl_parse_errors": 0,
+        "validation_observed": true,
+        "replay_consistency": "not_checked_worker_cli",
+        "checkpoint_continuity": "not_checked_worker_cli",
+        "no_runtime_error": false
+      },
+      "recovery": {
+        "failure_events": 2,
+        "recovery_events": 0,
+        "retry_stayed_within_policy": true
+      }
+    },
+    {
+      "id": "refactor_with_validation",
+      "category": "Refactor with validation",
+      "task": "Read src/lib.rs and tests/refactor_tests.rs. Refactor the repeated prefix formatting logic into a private helper without changing behavior. Complete only after cargo test passes.",
+      "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-20260422-v2/workspaces/refactor_with_validation",
+      "model": "qwen2.5-coder:14b",
+      "planner": "http",
+      "exit_code": 1,
+      "wall_clock_seconds": 30.47,
+      "classification": "PARTIAL",
+      "validators": [
+        {
+          "name": "file_contains:src/lib.rs",
+          "passed": false,
+          "detail": "expected substring: fn format_with_prefix"
+        },
+        {
+          "name": "cargo_test",
+          "passed": true,
+          "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 1 test\n.\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        }
+      ],
+      "runtime_success": false,
+      "validator_count": 2,
+      "validators_passed": 1,
+      "event_count": 116,
+      "iterations_observed": 10,
+      "timed_out": false,
+      "mutating_tool_succeeded": false,
+      "trust": {
+        "audit_log_complete": true,
+        "jsonl_parse_errors": 0,
+        "validation_observed": false,
+        "replay_consistency": "not_checked_worker_cli",
+        "checkpoint_continuity": "not_checked_worker_cli",
+        "no_runtime_error": true
+      },
+      "recovery": {
+        "failure_events": 1,
+        "recovery_events": 0,
+        "retry_stayed_within_policy": true
+      }
+    },
+    {
+      "id": "bug_fix_from_failing_test",
+      "category": "Bug fix from failing test",
+      "task": "Run or inspect the tests, find the failing arithmetic bug, and fix the implementation. Complete only after cargo test passes.",
+      "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-20260422-v2/workspaces/bug_fix_from_failing_test",
+      "model": "qwen2.5-coder:14b",
+      "planner": "http",
+      "exit_code": 1,
+      "wall_clock_seconds": 26.89,
+      "classification": "FAIL",
+      "validators": [
+        {
+          "name": "file_contains:src/lib.rs",
+          "passed": false,
+          "detail": "expected substring: a + b"
+        },
+        {
+          "name": "cargo_test",
+          "passed": false,
+          "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 1 test\nadd_adds --- FAILED\n\nfailures:\n\n---- add_adds stdout ----\n\nthread 'add_adds' (19126938) panicked at tests/bug_tests.rs:5:5:\nassertion `left == right` failed\n  left: -1\n right: 5\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    add_adds\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--test bug_tests`"
+        }
+      ],
+      "runtime_success": false,
+      "validator_count": 2,
+      "validators_passed": 0,
+      "event_count": 98,
+      "iterations_observed": 10,
+      "timed_out": false,
+      "mutating_tool_succeeded": false,
+      "trust": {
+        "audit_log_complete": true,
+        "jsonl_parse_errors": 0,
+        "validation_observed": false,
+        "replay_consistency": "not_checked_worker_cli",
+        "checkpoint_continuity": "not_checked_worker_cli",
+        "no_runtime_error": true
+      },
+      "recovery": {
+        "failure_events": 1,
+        "recovery_events": 0,
+        "retry_stayed_within_policy": true
+      }
+    },
+    {
+      "id": "seeded_compile_error_recovery",
+      "category": "Seeded compile error recovery",
+      "task": "This project has a compile error. Read src/lib.rs, repair the compile error, and complete only after cargo check and cargo test pass.",
+      "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-20260422-v2/workspaces/seeded_compile_error_recovery",
+      "model": "qwen2.5-coder:14b",
+      "planner": "http",
+      "exit_code": 1,
+      "wall_clock_seconds": 28.23,
+      "classification": "FAIL",
+      "validators": [
+        {
+          "name": "cargo_check",
+          "passed": false,
+          "detail": "error: this file contains an unclosed delimiter\n  --> src/lib.rs:12:3\n   |\n 1 | pub fn answer() -> i32 {\n   |                        - unclosed delimiter\n...\n12 | }\n   |  ^\n\nerror: could not compile `bench_compile` (lib) due to 1 previous error"
+        },
+        {
+          "name": "cargo_test",
+          "passed": false,
+          "detail": "error: this file contains an unclosed delimiter\n  --> src/lib.rs:12:3\n   |\n 1 | pub fn answer() -> i32 {\n   |                        - unclosed delimiter\n...\n12 | }\n   |  ^\n\nerror: could not compile `bench_compile` (lib) due to 1 previous error\nerror: could not compile `bench_compile` (lib test) due to 1 previous error"
+        }
+      ],
+      "runtime_success": false,
+      "validator_count": 2,
+      "validators_passed": 0,
+      "event_count": 115,
+      "iterations_observed": 10,
+      "timed_out": false,
+      "mutating_tool_succeeded": false,
+      "trust": {
+        "audit_log_complete": true,
+        "jsonl_parse_errors": 0,
+        "validation_observed": false,
+        "replay_consistency": "not_checked_worker_cli",
+        "checkpoint_continuity": "not_checked_worker_cli",
+        "no_runtime_error": true
+      },
+      "recovery": {
+        "failure_events": 1,
+        "recovery_events": 0,
+        "retry_stayed_within_policy": true
+      }
+    },
+    {
+      "id": "seeded_validation_failure_recovery",
+      "category": "Seeded validation failure recovery",
+      "task": "The implementation compiles but the validation tests fail. Read src/lib.rs and tests/validation_tests.rs, fix the behavior, and complete only after cargo test passes.",
+      "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-20260422-v2/workspaces/seeded_validation_failure_recovery",
+      "model": "qwen2.5-coder:14b",
+      "planner": "http",
+      "exit_code": 1,
+      "wall_clock_seconds": 35.74,
+      "classification": "FAIL",
+      "validators": [
+        {
+          "name": "cargo_test",
+          "passed": false,
+          "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 1 test\ntrims_and_lowercases --- FAILED\n\nfailures:\n\n---- trims_and_lowercases stdout ----\n\nthread 'trims_and_lowercases' (19128256) panicked at tests/validation_tests.rs:5:5:\nassertion `left == right` failed\n  left: \"  HeLLo  \"\n right: \"hello\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    trims_and_lowercases\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--test validation_tests`"
+        },
+        {
+          "name": "file_contains:src/lib.rs",
+          "passed": false,
+          "detail": "expected substring: trim()"
+        }
+      ],
+      "runtime_success": false,
+      "validator_count": 2,
+      "validators_passed": 0,
+      "event_count": 116,
+      "iterations_observed": 10,
+      "timed_out": false,
+      "mutating_tool_succeeded": false,
+      "trust": {
+        "audit_log_complete": true,
+        "jsonl_parse_errors": 0,
+        "validation_observed": false,
+        "replay_consistency": "not_checked_worker_cli",
+        "checkpoint_continuity": "not_checked_worker_cli",
+        "no_runtime_error": true
+      },
+      "recovery": {
+        "failure_events": 1,
+        "recovery_events": 0,
+        "retry_stayed_within_policy": true
+      }
+    },
+    {
+      "id": "repo_onboarding_find_change",
+      "category": "Repo onboarding / find-and-change task",
+      "task": "Onboard to this small repo. Find the default request timeout constant and change it from 1000 milliseconds to 5000 milliseconds without changing the public API. Complete only after cargo test passes.",
+      "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-20260422-v2/workspaces/repo_onboarding_find_change",
+      "model": "qwen2.5-coder:14b",
+      "planner": "http",
+      "exit_code": 1,
+      "wall_clock_seconds": 35.47,
+      "classification": "FAIL",
+      "validators": [
+        {
+          "name": "file_contains:src/config.rs",
+          "passed": false,
+          "detail": "expected substring: 5000"
+        },
+        {
+          "name": "cargo_test",
+          "passed": false,
+          "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 1 test\ntimeout_is_updated --- FAILED\n\nfailures:\n\n---- timeout_is_updated stdout ----\n\nthread 'timeout_is_updated' (19129198) panicked at tests/config_tests.rs:5:5:\nassertion `left == right` failed\n  left: 1000\n right: 5000\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    timeout_is_updated\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--test config_tests`"
+        }
+      ],
+      "runtime_success": false,
+      "validator_count": 2,
+      "validators_passed": 0,
+      "event_count": 95,
+      "iterations_observed": 10,
+      "timed_out": false,
+      "mutating_tool_succeeded": false,
+      "trust": {
+        "audit_log_complete": true,
+        "jsonl_parse_errors": 0,
+        "validation_observed": false,
+        "replay_consistency": "not_checked_worker_cli",
+        "checkpoint_continuity": "not_checked_worker_cli",
+        "no_runtime_error": true
+      },
+      "recovery": {
+        "failure_events": 1,
+        "recovery_events": 0,
+        "retry_stayed_within_policy": true
+      }
+    },
+    {
+      "id": "vertical_slice",
+      "category": "Small end-to-end vertical slice",
+      "task": "Read the whole crate. Add a small end-to-end settings parser: expose `parse_setting(input: &str) -> Option<Setting>` where `Setting` has `key` and `value` strings. It should parse `name=value`, trim whitespace, reject empty keys, and pass the existing tests. Complete only after cargo test passes.",
+      "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-20260422-v2/workspaces/vertical_slice",
+      "model": "qwen2.5-coder:14b",
+      "planner": "http",
+      "exit_code": 1,
+      "wall_clock_seconds": 35.75,
+      "classification": "FAIL",
+      "validators": [
+        {
+          "name": "file_contains:src/lib.rs",
+          "passed": false,
+          "detail": "expected substring: pub struct Setting"
+        },
+        {
+          "name": "file_contains:src/lib.rs",
+          "passed": false,
+          "detail": "expected substring: parse_setting"
+        },
+        {
+          "name": "cargo_test",
+          "passed": false,
+          "detail": "error[E0432]: unresolved import `bench_vertical::parse_setting`\n --> tests/settings_tests.rs:1:5\n  |\n1 | use bench_vertical::parse_setting;\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `parse_setting` in the root\n\nFor more information about this error, try `rustc --explain E0432`.\nerror: could not compile `bench_vertical` (test \"settings_tests\") due to 1 previous error"
+        }
+      ],
+      "runtime_success": false,
+      "validator_count": 3,
+      "validators_passed": 0,
+      "event_count": 137,
+      "iterations_observed": 12,
+      "timed_out": false,
+      "mutating_tool_succeeded": false,
+      "trust": {
+        "audit_log_complete": true,
+        "jsonl_parse_errors": 0,
+        "validation_observed": false,
+        "replay_consistency": "not_checked_worker_cli",
+        "checkpoint_continuity": "not_checked_worker_cli",
+        "no_runtime_error": true
+      },
+      "recovery": {
+        "failure_events": 1,
+        "recovery_events": 0,
+        "retry_stayed_within_policy": true
+      }
+    }
+  ]
+}

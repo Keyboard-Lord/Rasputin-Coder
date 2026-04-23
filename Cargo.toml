@@ -1,0 +1,17 @@
+[workspace]
+members = [
+    "apps/rasputin-tui",
+    "crates/forge-runtime",
+    "crates/rasputin-interface",
+]
+default-members = [
+    "apps/rasputin-tui",
+    "crates/forge-runtime",
+    "crates/rasputin-interface",
+]
+resolver = "2"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true

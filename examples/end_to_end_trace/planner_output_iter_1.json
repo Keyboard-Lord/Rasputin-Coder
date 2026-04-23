@@ -1,0 +1,9 @@
+{
+  "tool_call": {
+    "tool": "write_file",
+    "args": {
+      "path": "Cargo.toml",
+      "content": "[package]\nname = \"hello\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]"
+    }
+  }
+}

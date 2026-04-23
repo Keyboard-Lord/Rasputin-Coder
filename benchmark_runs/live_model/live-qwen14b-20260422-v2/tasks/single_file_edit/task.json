@@ -1,0 +1,22 @@
+{
+  "id": "single_file_edit",
+  "category": "Single-file edit",
+  "fixture": "rust_lib_basic",
+  "max_iterations": 8,
+  "task": "Read Cargo.toml and src/lib.rs first. Add a public function `double(n: i32) -> i32` to src/lib.rs that returns n * 2. Complete only after cargo test passes.",
+  "validators": [
+    {
+      "type": "file_contains",
+      "path": "src/lib.rs",
+      "text": "pub fn double"
+    },
+    {
+      "type": "file_contains",
+      "path": "src/lib.rs",
+      "text": "n * 2"
+    },
+    {
+      "type": "cargo_test"
+    }
+  ]
+}

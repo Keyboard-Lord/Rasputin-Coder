@@ -1,0 +1,47 @@
+{
+  "id": "multi_file_feature",
+  "category": "Multi-file feature addition",
+  "task": "Read Cargo.toml, src/lib.rs, and tests/feature_tests.rs. Implement the missing math module so `triple(4)` returns 12 and `is_even(6)` returns true. Expose the module from src/lib.rs. Complete only after cargo test passes.",
+  "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-20260422/workspaces/multi_file_feature",
+  "model": "qwen2.5-coder:14b",
+  "planner": "http",
+  "exit_code": 1,
+  "wall_clock_seconds": 32.07,
+  "classification": "PARTIAL",
+  "validators": [
+    {
+      "name": "file_exists:src/math.rs",
+      "passed": false,
+      "detail": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-20260422/workspaces/multi_file_feature/src/math.rs"
+    },
+    {
+      "name": "file_contains:src/lib.rs",
+      "passed": false,
+      "detail": "expected substring: pub mod math"
+    },
+    {
+      "name": "cargo_test",
+      "passed": false,
+      "detail": "error: current package believes it's in a workspace when it's not:\ncurrent:   /Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-20260422/workspaces/multi_file_feature/Cargo.toml\nworkspace: /Users/mcrae/Desktop/Rasputin-1/Cargo.toml\n\nthis may be fixable by adding `benchmark_runs/live_model/live-qwen14b-20260422/workspaces/multi_file_feature` to the `workspace.members` array of the manifest located at: /Users/mcrae/Desktop/Rasputin-1/Cargo.toml\nAlternatively, to keep it out of the workspace, add the package to the `workspace.exclude` array, or add an empty `[workspace]` table to the package's manifest."
+    }
+  ],
+  "runtime_success": false,
+  "validator_count": 3,
+  "validators_passed": 0,
+  "event_count": 116,
+  "iterations_observed": 10,
+  "timed_out": false,
+  "trust": {
+    "audit_log_complete": true,
+    "jsonl_parse_errors": 0,
+    "validation_observed": false,
+    "replay_consistency": "not_checked_worker_cli",
+    "checkpoint_continuity": "not_checked_worker_cli",
+    "no_runtime_error": true
+  },
+  "recovery": {
+    "failure_events": 1,
+    "recovery_events": 0,
+    "retry_stayed_within_policy": true
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "id": "single_file_edit",
+  "category": "Single-file edit",
+  "task": "Read Cargo.toml and src/lib.rs first. Add a public function `double(n: i32) -> i32` to src/lib.rs that returns n * 2. Complete only after cargo test passes.",
+  "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-20260422/workspaces/single_file_edit",
+  "model": "qwen2.5-coder:14b",
+  "planner": "http",
+  "exit_code": 1,
+  "wall_clock_seconds": 32.32,
+  "classification": "PARTIAL",
+  "validators": [
+    {
+      "name": "file_contains:src/lib.rs",
+      "passed": false,
+      "detail": "expected substring: pub fn double"
+    },
+    {
+      "name": "file_contains:src/lib.rs",
+      "passed": false,
+      "detail": "expected substring: n * 2"
+    },
+    {
+      "name": "cargo_test",
+      "passed": false,
+      "detail": "error: current package believes it's in a workspace when it's not:\ncurrent:   /Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-20260422/workspaces/single_file_edit/Cargo.toml\nworkspace: /Users/mcrae/Desktop/Rasputin-1/Cargo.toml\n\nthis may be fixable by adding `benchmark_runs/live_model/live-qwen14b-20260422/workspaces/single_file_edit` to the `workspace.members` array of the manifest located at: /Users/mcrae/Desktop/Rasputin-1/Cargo.toml\nAlternatively, to keep it out of the workspace, add the package to the `workspace.exclude` array, or add an empty `[workspace]` table to the package's manifest."
+    }
+  ],
+  "runtime_success": false,
+  "validator_count": 3,
+  "validators_passed": 0,
+  "event_count": 93,
+  "iterations_observed": 8,
+  "timed_out": false,
+  "trust": {
+    "audit_log_complete": true,
+    "jsonl_parse_errors": 0,
+    "validation_observed": false,
+    "replay_consistency": "not_checked_worker_cli",
+    "checkpoint_continuity": "not_checked_worker_cli",
+    "no_runtime_error": true
+  },
+  "recovery": {
+    "failure_events": 1,
+    "recovery_events": 0,
+    "retry_stayed_within_policy": true
+  }
+}

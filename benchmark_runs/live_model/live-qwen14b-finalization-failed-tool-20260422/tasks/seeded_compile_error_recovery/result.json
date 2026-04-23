@@ -1,0 +1,43 @@
+{
+  "id": "seeded_compile_error_recovery",
+  "category": "Seeded compile error recovery",
+  "task": "This project has a compile error. Read src/lib.rs, repair the compile error, and complete only after cargo check and cargo test pass.",
+  "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-finalization-failed-tool-20260422/workspaces/seeded_compile_error_recovery",
+  "model": "qwen2.5-coder:14b",
+  "planner": "http",
+  "exit_code": 1,
+  "wall_clock_seconds": 49.67,
+  "classification": "PARTIAL",
+  "validators": [
+    {
+      "name": "cargo_check",
+      "passed": false,
+      "detail": "error: this file contains an unclosed delimiter\n  --> src/lib.rs:12:3\n   |\n 1 | pub fn answer() -> i32 {\n   |                        - unclosed delimiter\n...\n12 | }\n   |  ^\n\nerror: could not compile `bench_compile` (lib) due to 1 previous error"
+    },
+    {
+      "name": "cargo_test",
+      "passed": false,
+      "detail": "error: this file contains an unclosed delimiter\n  --> src/lib.rs:12:3\n   |\n 1 | pub fn answer() -> i32 {\n   |                        - unclosed delimiter\n...\n12 | }\n   |  ^\n\nerror: could not compile `bench_compile` (lib test) due to 1 previous error\nerror: could not compile `bench_compile` (lib) due to 1 previous error"
+    }
+  ],
+  "runtime_success": false,
+  "validator_count": 2,
+  "validators_passed": 0,
+  "event_count": 137,
+  "iterations_observed": 10,
+  "timed_out": false,
+  "mutating_tool_succeeded": true,
+  "trust": {
+    "audit_log_complete": true,
+    "jsonl_parse_errors": 0,
+    "validation_observed": true,
+    "replay_consistency": "not_checked_worker_cli",
+    "checkpoint_continuity": "not_checked_worker_cli",
+    "no_runtime_error": true
+  },
+  "recovery": {
+    "failure_events": 3,
+    "recovery_events": 4,
+    "retry_stayed_within_policy": true
+  }
+}

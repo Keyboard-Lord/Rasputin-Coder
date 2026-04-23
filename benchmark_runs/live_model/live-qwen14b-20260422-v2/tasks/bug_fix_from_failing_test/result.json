@@ -1,0 +1,43 @@
+{
+  "id": "bug_fix_from_failing_test",
+  "category": "Bug fix from failing test",
+  "task": "Run or inspect the tests, find the failing arithmetic bug, and fix the implementation. Complete only after cargo test passes.",
+  "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-20260422-v2/workspaces/bug_fix_from_failing_test",
+  "model": "qwen2.5-coder:14b",
+  "planner": "http",
+  "exit_code": 1,
+  "wall_clock_seconds": 26.89,
+  "classification": "FAIL",
+  "validators": [
+    {
+      "name": "file_contains:src/lib.rs",
+      "passed": false,
+      "detail": "expected substring: a + b"
+    },
+    {
+      "name": "cargo_test",
+      "passed": false,
+      "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 1 test\nadd_adds --- FAILED\n\nfailures:\n\n---- add_adds stdout ----\n\nthread 'add_adds' (19126938) panicked at tests/bug_tests.rs:5:5:\nassertion `left == right` failed\n  left: -1\n right: 5\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    add_adds\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--test bug_tests`"
+    }
+  ],
+  "runtime_success": false,
+  "validator_count": 2,
+  "validators_passed": 0,
+  "event_count": 98,
+  "iterations_observed": 10,
+  "timed_out": false,
+  "mutating_tool_succeeded": false,
+  "trust": {
+    "audit_log_complete": true,
+    "jsonl_parse_errors": 0,
+    "validation_observed": false,
+    "replay_consistency": "not_checked_worker_cli",
+    "checkpoint_continuity": "not_checked_worker_cli",
+    "no_runtime_error": true
+  },
+  "recovery": {
+    "failure_events": 1,
+    "recovery_events": 0,
+    "retry_stayed_within_policy": true
+  }
+}

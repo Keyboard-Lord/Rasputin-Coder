@@ -1,0 +1,48 @@
+{
+  "id": "vertical_slice",
+  "category": "Small end-to-end vertical slice",
+  "task": "Read the whole crate. Add a small end-to-end settings parser: expose `parse_setting(input: &str) -> Option<Setting>` where `Setting` has `key` and `value` strings. It should parse `name=value`, trim whitespace, reject empty keys, and pass the existing tests. Complete only after cargo test passes.",
+  "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-repo-shape-multifile-hint-20260422/workspaces/vertical_slice",
+  "model": "qwen2.5-coder:14b",
+  "planner": "http",
+  "exit_code": 1,
+  "wall_clock_seconds": 86.15,
+  "classification": "PARTIAL",
+  "validators": [
+    {
+      "name": "file_contains:src/lib.rs",
+      "passed": true,
+      "detail": "expected substring: pub struct Setting"
+    },
+    {
+      "name": "file_contains:src/lib.rs",
+      "passed": true,
+      "detail": "expected substring: parse_setting"
+    },
+    {
+      "name": "cargo_test",
+      "passed": true,
+      "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 2 tests\n..\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    }
+  ],
+  "runtime_success": false,
+  "validator_count": 3,
+  "validators_passed": 3,
+  "event_count": 166,
+  "iterations_observed": 12,
+  "timed_out": false,
+  "mutating_tool_succeeded": true,
+  "trust": {
+    "audit_log_complete": true,
+    "jsonl_parse_errors": 0,
+    "validation_observed": true,
+    "replay_consistency": "not_checked_worker_cli",
+    "checkpoint_continuity": "not_checked_worker_cli",
+    "no_runtime_error": true
+  },
+  "recovery": {
+    "failure_events": 4,
+    "recovery_events": 3,
+    "retry_stayed_within_policy": true
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "multi_file_feature",
+  "category": "Multi-file feature addition",
+  "fixture": "rust_lib_feature",
+  "max_iterations": 10,
+  "task": "Read Cargo.toml, src/lib.rs, and tests/feature_tests.rs. Implement the missing math module so `triple(4)` returns 12 and `is_even(6)` returns true. Expose the module from src/lib.rs. Complete only after cargo test passes.",
+  "validators": [
+    {
+      "type": "file_exists",
+      "path": "src/math.rs"
+    },
+    {
+      "type": "file_contains",
+      "path": "src/lib.rs",
+      "text": "pub mod math"
+    },
+    {
+      "type": "cargo_test"
+    }
+  ]
+}

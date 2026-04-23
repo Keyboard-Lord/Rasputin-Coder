@@ -1,0 +1,22 @@
+{
+  "id": "vertical_slice",
+  "category": "Small end-to-end vertical slice",
+  "fixture": "rust_vertical_slice",
+  "max_iterations": 12,
+  "task": "Read the whole crate. Add a small end-to-end settings parser: expose `parse_setting(input: &str) -> Option<Setting>` where `Setting` has `key` and `value` strings. It should parse `name=value`, trim whitespace, reject empty keys, and pass the existing tests. Complete only after cargo test passes.",
+  "validators": [
+    {
+      "type": "file_contains",
+      "path": "src/lib.rs",
+      "text": "pub struct Setting"
+    },
+    {
+      "type": "file_contains",
+      "path": "src/lib.rs",
+      "text": "parse_setting"
+    },
+    {
+      "type": "cargo_test"
+    }
+  ]
+}

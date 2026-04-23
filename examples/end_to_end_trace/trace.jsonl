@@ -1,0 +1,23 @@
+{"timestamp":"2026-04-19T01:23:45.123Z","session_id":"forge-20260419-012345-0001","iteration":0,"event_type":"ITERATION_START","severity":"INFO","message":"--- Iteration 0 ---"}
+{"timestamp":"2026-04-19T01:23:45.124Z","session_id":"forge-20260419-012345-0001","iteration":0,"event_type":"PREFLIGHT_PASSED","severity":"INFO","message":"Checks passed"}
+{"timestamp":"2026-04-19T01:23:45.125Z","session_id":"forge-20260419-012345-0001","iteration":0,"event_type":"PLANNER_OUTPUT","severity":"INFO","message":"Planner output: tool_call (write_file)"}
+{"timestamp":"2026-04-19T01:23:45.126Z","session_id":"forge-20260419-012345-0001","iteration":0,"event_type":"PROTOCOL_VALIDATION_ACCEPT","severity":"INFO","message":"Canonical JSON accepted (fast path)"}
+{"timestamp":"2026-04-19T01:23:45.127Z","session_id":"forge-20260419-012345-0001","iteration":0,"event_type":"READ_BEFORE_WRITE_PASS","severity":"INFO","message":"Read-before-write check passed"}
+{"timestamp":"2026-04-19T01:23:45.128Z","session_id":"forge-20260419-012345-0001","iteration":0,"event_type":"TOOL_EXECUTING","severity":"INFO","message":"Executing tool: write_file","tool_name":"write_file"}
+{"timestamp":"2026-04-19T01:23:45.129Z","session_id":"forge-20260419-012345-0001","iteration":0,"event_type":"TOOL_RESULT","severity":"INFO","message":"Tool write_file succeeded: wrote 2 lines to main.rs","tool_name":"write_file"}
+{"timestamp":"2026-04-19T01:23:45.150Z","session_id":"forge-20260419-012345-0001","iteration":0,"event_type":"VALIDATION_STAGE","severity":"INFO","message":"Valid Rust syntax","metadata":{"stage":"syntax","status":"PASS","duration_ms":"23"}}
+{"timestamp":"2026-04-19T01:23:45.151Z","session_id":"forge-20260419-012345-0001","iteration":0,"event_type":"VALIDATION_COMPLETE","severity":"INFO","message":"Validation passed for main.rs"}
+{"timestamp":"2026-04-19T01:23:45.152Z","session_id":"forge-20260419-012345-0001","iteration":0,"event_type":"STATE_COMMIT","severity":"INFO","message":"Committed mutations to state"}
+{"timestamp":"2026-04-19T01:23:46.000Z","session_id":"forge-20260419-012345-0001","iteration":1,"event_type":"ITERATION_START","severity":"INFO","message":"--- Iteration 1 ---"}
+{"timestamp":"2026-04-19T01:23:46.001Z","session_id":"forge-20260419-012345-0001","iteration":1,"event_type":"PREFLIGHT_PASSED","severity":"INFO","message":"Checks passed"}
+{"timestamp":"2026-04-19T01:23:46.002Z","session_id":"forge-20260419-012345-0001","iteration":1,"event_type":"PLANNER_OUTPUT","severity":"INFO","message":"Planner output: tool_call (write_file)"}
+{"timestamp":"2026-04-19T01:23:46.003Z","session_id":"forge-20260419-012345-0001","iteration":1,"event_type":"PROTOCOL_VALIDATION_ACCEPT","severity":"INFO","message":"Canonical JSON accepted (fast path)"}
+{"timestamp":"2026-04-19T01:23:46.004Z","session_id":"forge-20260419-012345-0001","iteration":1,"event_type":"TOOL_EXECUTING","severity":"INFO","message":"Executing tool: write_file","tool_name":"write_file"}
+{"timestamp":"2026-04-19T01:23:46.005Z","session_id":"forge-20260419-012345-0001","iteration":1,"event_type":"TOOL_RESULT","severity":"INFO","message":"Tool write_file succeeded: wrote 5 lines to Cargo.toml","tool_name":"write_file"}
+{"timestamp":"2026-04-19T01:23:46.050Z","session_id":"forge-20260419-012345-0001","iteration":1,"event_type":"VALIDATION_STAGE","severity":"INFO","message":"TOML syntax valid","metadata":{"stage":"syntax","status":"PASS","duration_ms":"15"}}
+{"timestamp":"2026-04-19T01:23:46.051Z","session_id":"forge-20260419-012345-0001","iteration":1,"event_type":"VALIDATION_COMPLETE","severity":"INFO","message":"Validation passed for Cargo.toml"}
+{"timestamp":"2026-04-19T01:23:46.052Z","session_id":"forge-20260419-012345-0001","iteration":1,"event_type":"STATE_COMMIT","severity":"INFO","message":"Committed mutations to state"}
+{"timestamp":"2026-04-19T01:23:47.000Z","session_id":"forge-20260419-012345-0001","iteration":2,"event_type":"ITERATION_START","severity":"INFO","message":"--- Iteration 2 ---"}
+{"timestamp":"2026-04-19T01:23:47.001Z","session_id":"forge-20260419-012345-0001","iteration":2,"event_type":"PLANNER_OUTPUT","severity":"INFO","message":"Planner output: completion"}
+{"timestamp":"2026-04-19T01:23:47.002Z","session_id":"forge-20260419-012345-0001","iteration":2,"event_type":"COMPLETION_ACCEPT","severity":"INFO","message":"Completion accepted: Created a complete Rust CLI project with main.rs and Cargo.toml. The program prints 'hello world' when run with `cargo run`."}
+{"timestamp":"2026-04-19T01:23:47.003Z","session_id":"forge-20260419-012345-0001","iteration":2,"event_type":"RUNTIME_COMPLETE","severity":"INFO","message":"Runtime finished with status: Complete"}

@@ -1,0 +1,43 @@
+{
+  "id": "repo_onboarding_find_change",
+  "category": "Repo onboarding / find-and-change task",
+  "task": "Onboard to this small repo. Find the default request timeout constant and change it from 1000 milliseconds to 5000 milliseconds without changing the public API. Complete only after cargo test passes.",
+  "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-finalization-failed-tool-20260422/workspaces/repo_onboarding_find_change",
+  "model": "qwen2.5-coder:14b",
+  "planner": "http",
+  "exit_code": 1,
+  "wall_clock_seconds": 46.53,
+  "classification": "FAIL",
+  "validators": [
+    {
+      "name": "file_contains:src/config.rs",
+      "passed": false,
+      "detail": "expected substring: 5000"
+    },
+    {
+      "name": "cargo_test",
+      "passed": false,
+      "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 1 test\ntimeout_is_updated --- FAILED\n\nfailures:\n\n---- timeout_is_updated stdout ----\n\nthread 'timeout_is_updated' (19183752) panicked at tests/config_tests.rs:5:5:\nassertion `left == right` failed\n  left: 1000\n right: 5000\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    timeout_is_updated\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--test config_tests`"
+    }
+  ],
+  "runtime_success": false,
+  "validator_count": 2,
+  "validators_passed": 0,
+  "event_count": 101,
+  "iterations_observed": 10,
+  "timed_out": false,
+  "mutating_tool_succeeded": false,
+  "trust": {
+    "audit_log_complete": true,
+    "jsonl_parse_errors": 0,
+    "validation_observed": false,
+    "replay_consistency": "not_checked_worker_cli",
+    "checkpoint_continuity": "not_checked_worker_cli",
+    "no_runtime_error": true
+  },
+  "recovery": {
+    "failure_events": 1,
+    "recovery_events": 2,
+    "retry_stayed_within_policy": true
+  }
+}

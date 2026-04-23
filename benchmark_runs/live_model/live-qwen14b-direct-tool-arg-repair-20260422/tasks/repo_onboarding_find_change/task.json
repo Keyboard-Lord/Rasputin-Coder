@@ -1,0 +1,17 @@
+{
+  "id": "repo_onboarding_find_change",
+  "category": "Repo onboarding / find-and-change task",
+  "fixture": "rust_find_change",
+  "max_iterations": 10,
+  "task": "Onboard to this small repo. Find the default request timeout constant and change it from 1000 milliseconds to 5000 milliseconds without changing the public API. Complete only after cargo test passes.",
+  "validators": [
+    {
+      "type": "file_contains",
+      "path": "src/config.rs",
+      "text": "5000"
+    },
+    {
+      "type": "cargo_test"
+    }
+  ]
+}

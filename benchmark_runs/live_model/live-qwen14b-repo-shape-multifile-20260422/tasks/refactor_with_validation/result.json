@@ -1,0 +1,43 @@
+{
+  "id": "refactor_with_validation",
+  "category": "Refactor with validation",
+  "task": "Read src/lib.rs and tests/refactor_tests.rs. Refactor the repeated prefix formatting logic into a private helper without changing behavior. Complete only after cargo test passes.",
+  "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-repo-shape-multifile-20260422/workspaces/refactor_with_validation",
+  "model": "qwen2.5-coder:14b",
+  "planner": "http",
+  "exit_code": 1,
+  "wall_clock_seconds": 24.3,
+  "classification": "PARTIAL",
+  "validators": [
+    {
+      "name": "file_contains:src/lib.rs",
+      "passed": false,
+      "detail": "expected substring: fn format_with_prefix"
+    },
+    {
+      "name": "cargo_test",
+      "passed": true,
+      "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 1 test\n.\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    }
+  ],
+  "runtime_success": false,
+  "validator_count": 2,
+  "validators_passed": 1,
+  "event_count": 65,
+  "iterations_observed": 4,
+  "timed_out": false,
+  "mutating_tool_succeeded": false,
+  "trust": {
+    "audit_log_complete": true,
+    "jsonl_parse_errors": 0,
+    "validation_observed": false,
+    "replay_consistency": "not_checked_worker_cli",
+    "checkpoint_continuity": "not_checked_worker_cli",
+    "no_runtime_error": false
+  },
+  "recovery": {
+    "failure_events": 2,
+    "recovery_events": 0,
+    "retry_stayed_within_policy": true
+  }
+}

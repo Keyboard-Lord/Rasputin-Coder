@@ -1,0 +1,43 @@
+{
+  "id": "repo_onboarding_find_change",
+  "category": "Repo onboarding / find-and-change task",
+  "task": "Onboard to this small repo. Find the default request timeout constant and change it from 1000 milliseconds to 5000 milliseconds without changing the public API. Complete only after cargo test passes.",
+  "workspace": "/Users/mcrae/Desktop/Rasputin-1/benchmark_runs/live_model/live-qwen14b-self-healing-sprint-pass1-20260422/workspaces/repo_onboarding_find_change",
+  "model": "qwen2.5-coder:14b",
+  "planner": "http",
+  "exit_code": 0,
+  "wall_clock_seconds": 15.38,
+  "classification": "PASS",
+  "validators": [
+    {
+      "name": "file_contains:src/config.rs",
+      "passed": true,
+      "detail": "expected substring: 5000"
+    },
+    {
+      "name": "cargo_test",
+      "passed": true,
+      "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 1 test\n.\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    }
+  ],
+  "runtime_success": true,
+  "validator_count": 2,
+  "validators_passed": 2,
+  "event_count": 37,
+  "iterations_observed": 1,
+  "timed_out": false,
+  "mutating_tool_succeeded": false,
+  "trust": {
+    "audit_log_complete": true,
+    "jsonl_parse_errors": 0,
+    "validation_observed": true,
+    "replay_consistency": "not_checked_worker_cli",
+    "checkpoint_continuity": "not_checked_worker_cli",
+    "no_runtime_error": true
+  },
+  "recovery": {
+    "failure_events": 0,
+    "recovery_events": 0,
+    "retry_stayed_within_policy": true
+  }
+}
