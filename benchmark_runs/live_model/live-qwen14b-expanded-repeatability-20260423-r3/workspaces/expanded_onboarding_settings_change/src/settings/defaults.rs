@@ -1,0 +1,2 @@
+pub const DEFAULT_TIMEOUT_MS: u64 = 2500;
+pub const DEFAULT_MAX_RETRIES: u8 = 5;

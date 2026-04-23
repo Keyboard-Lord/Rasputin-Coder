@@ -1,0 +1,16 @@
+{
+  "id": "refactor_with_validation",
+  "category": "Refactor with validation",
+  "fixture": "rust_refactor",
+  "max_iterations": 10,
+  "task": "Read src/lib.rs and tests/refactor_tests.rs. Refactor the repeated prefix formatting logic into a private helper without changing behavior. Complete only after cargo test passes.",
+  "validators": [
+    {
+      "type": "rust_prefix_helper_refactor",
+      "path": "src/lib.rs"
+    },
+    {
+      "type": "cargo_test"
+    }
+  ]
+}

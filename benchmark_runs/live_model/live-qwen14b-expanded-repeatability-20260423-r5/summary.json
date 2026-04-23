@@ -1,0 +1,264 @@
+{
+  "run_dir": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/live-qwen14b-expanded-repeatability-20260423-r5",
+  "model": "qwen2.5-coder:14b",
+  "tier": "expanded",
+  "endpoint": "http://127.0.0.1:11434",
+  "installed_models": [
+    "llama3.1:latest",
+    "qwen2.5-coder:14b",
+    "qwen2.5-coder:latest",
+    "qwen3.5:latest"
+  ],
+  "total": 5,
+  "pass": 5,
+  "partial": 0,
+  "fail": 0,
+  "pass_rate": 1.0,
+  "partial_rate": 0.0,
+  "fail_rate": 0.0,
+  "average_recovery_events": 3.6,
+  "average_operator_interventions": 0.0,
+  "final_replacement_verdict": "practical daily replacement",
+  "tasks": [
+    {
+      "id": "expanded_nested_module_feature",
+      "category": "Expanded: nested Rust module feature",
+      "task": "Read Cargo.toml, src/lib.rs, src/auth/mod.rs, and tests/token_tests.rs. Add the missing auth token module so bearer headers can be detected and parsed. Expose it through the existing auth module tree. Complete only after cargo test passes.",
+      "workspace": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/live-qwen14b-expanded-repeatability-20260423-r5/workspaces/expanded_nested_module_feature",
+      "model": "qwen2.5-coder:14b",
+      "planner": "http",
+      "exit_code": 0,
+      "wall_clock_seconds": 28.37,
+      "classification": "PASS",
+      "validators": [
+        {
+          "name": "file_exists:src/auth/token.rs",
+          "passed": true,
+          "detail": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/live-qwen14b-expanded-repeatability-20260423-r5/workspaces/expanded_nested_module_feature/src/auth/token.rs"
+        },
+        {
+          "name": "file_contains:src/auth/mod.rs",
+          "passed": true,
+          "detail": "expected substring: pub mod token"
+        },
+        {
+          "name": "cargo_test",
+          "passed": true,
+          "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 2 tests\n..\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        }
+      ],
+      "runtime_success": true,
+      "validator_count": 3,
+      "validators_passed": 3,
+      "event_count": 98,
+      "iterations_observed": 4,
+      "timed_out": false,
+      "mutating_tool_succeeded": true,
+      "trust": {
+        "audit_log_complete": true,
+        "jsonl_parse_errors": 0,
+        "validation_observed": true,
+        "replay_consistency": "not_checked_worker_cli",
+        "checkpoint_continuity": "not_checked_worker_cli",
+        "no_runtime_error": true
+      },
+      "recovery": {
+        "failure_events": 4,
+        "recovery_events": 5,
+        "retry_stayed_within_policy": true
+      }
+    },
+    {
+      "id": "expanded_shared_helper_refactor",
+      "category": "Expanded: coordinated multi-file refactor",
+      "task": "Read the crate modules and tests. Refactor the repeated label prefix formatting into a shared helper module at src/formatting.rs, wire it from src/lib.rs, and update user/team/audit modules to use it without changing the public API. Complete only after cargo test passes.",
+      "workspace": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/live-qwen14b-expanded-repeatability-20260423-r5/workspaces/expanded_shared_helper_refactor",
+      "model": "qwen2.5-coder:14b",
+      "planner": "http",
+      "exit_code": 0,
+      "wall_clock_seconds": 18.78,
+      "classification": "PASS",
+      "validators": [
+        {
+          "name": "file_exists:src/formatting.rs",
+          "passed": true,
+          "detail": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/live-qwen14b-expanded-repeatability-20260423-r5/workspaces/expanded_shared_helper_refactor/src/formatting.rs"
+        },
+        {
+          "name": "file_contains:src/lib.rs",
+          "passed": true,
+          "detail": "expected substring: mod formatting"
+        },
+        {
+          "name": "file_not_contains:src/user.rs",
+          "passed": true,
+          "detail": "forbidden substring: format!(\"user:{}\""
+        },
+        {
+          "name": "file_not_contains:src/team.rs",
+          "passed": true,
+          "detail": "forbidden substring: format!(\"team:{}\""
+        },
+        {
+          "name": "file_not_contains:src/audit.rs",
+          "passed": true,
+          "detail": "forbidden substring: format!(\"audit:{}\""
+        },
+        {
+          "name": "cargo_test",
+          "passed": true,
+          "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 1 test\n.\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        }
+      ],
+      "runtime_success": true,
+      "validator_count": 6,
+      "validators_passed": 6,
+      "event_count": 75,
+      "iterations_observed": 4,
+      "timed_out": false,
+      "mutating_tool_succeeded": false,
+      "trust": {
+        "audit_log_complete": true,
+        "jsonl_parse_errors": 0,
+        "validation_observed": true,
+        "replay_consistency": "not_checked_worker_cli",
+        "checkpoint_continuity": "not_checked_worker_cli",
+        "no_runtime_error": true
+      },
+      "recovery": {
+        "failure_events": 1,
+        "recovery_events": 6,
+        "retry_stayed_within_policy": true
+      }
+    },
+    {
+      "id": "expanded_bug_fix_cart",
+      "category": "Expanded: realistic failing-test bug fix",
+      "task": "Run or inspect the cart tests, find the subtotal calculation bug, and fix the implementation without changing public struct fields. Complete only after cargo test passes.",
+      "workspace": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/live-qwen14b-expanded-repeatability-20260423-r5/workspaces/expanded_bug_fix_cart",
+      "model": "qwen2.5-coder:14b",
+      "planner": "http",
+      "exit_code": 0,
+      "wall_clock_seconds": 19.41,
+      "classification": "PASS",
+      "validators": [
+        {
+          "name": "cargo_test",
+          "passed": true,
+          "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 1 test\n.\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        }
+      ],
+      "runtime_success": true,
+      "validator_count": 1,
+      "validators_passed": 1,
+      "event_count": 72,
+      "iterations_observed": 4,
+      "timed_out": false,
+      "mutating_tool_succeeded": false,
+      "trust": {
+        "audit_log_complete": true,
+        "jsonl_parse_errors": 0,
+        "validation_observed": true,
+        "replay_consistency": "not_checked_worker_cli",
+        "checkpoint_continuity": "not_checked_worker_cli",
+        "no_runtime_error": true
+      },
+      "recovery": {
+        "failure_events": 1,
+        "recovery_events": 3,
+        "retry_stayed_within_policy": true
+      }
+    },
+    {
+      "id": "expanded_onboarding_settings_change",
+      "category": "Expanded: repo onboarding find-and-change",
+      "task": "Onboard to this settings crate. Find the default maximum retry count and change it from 3 to 5 without changing the timeout default or public loader API. Complete only after cargo test passes.",
+      "workspace": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/live-qwen14b-expanded-repeatability-20260423-r5/workspaces/expanded_onboarding_settings_change",
+      "model": "qwen2.5-coder:14b",
+      "planner": "http",
+      "exit_code": 0,
+      "wall_clock_seconds": 14.25,
+      "classification": "PASS",
+      "validators": [
+        {
+          "name": "file_contains:src/settings/defaults.rs",
+          "passed": true,
+          "detail": "expected substring: DEFAULT_MAX_RETRIES: u8 = 5"
+        },
+        {
+          "name": "cargo_test",
+          "passed": true,
+          "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 1 test\n.\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        }
+      ],
+      "runtime_success": true,
+      "validator_count": 2,
+      "validators_passed": 2,
+      "event_count": 43,
+      "iterations_observed": 1,
+      "timed_out": false,
+      "mutating_tool_succeeded": false,
+      "trust": {
+        "audit_log_complete": true,
+        "jsonl_parse_errors": 0,
+        "validation_observed": true,
+        "replay_consistency": "not_checked_worker_cli",
+        "checkpoint_continuity": "not_checked_worker_cli",
+        "no_runtime_error": true
+      },
+      "recovery": {
+        "failure_events": 1,
+        "recovery_events": 1,
+        "retry_stayed_within_policy": true
+      }
+    },
+    {
+      "id": "expanded_settings_vertical_slice",
+      "category": "Expanded: multi-surface vertical slice",
+      "task": "Read the whole crate. Add parse_and_validate_setting(input: &str) -> Result<Setting, SettingError>. It must parse key=value, trim whitespace, reject empty keys, reject keys that fail validation::is_valid_key, expose SettingError publicly, and pass the existing tests. Complete only after cargo test passes.",
+      "workspace": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/live-qwen14b-expanded-repeatability-20260423-r5/workspaces/expanded_settings_vertical_slice",
+      "model": "qwen2.5-coder:14b",
+      "planner": "http",
+      "exit_code": 0,
+      "wall_clock_seconds": 21.5,
+      "classification": "PASS",
+      "validators": [
+        {
+          "name": "file_contains:src/lib.rs",
+          "passed": true,
+          "detail": "expected substring: parse_and_validate_setting"
+        },
+        {
+          "name": "file_contains:src/lib.rs",
+          "passed": true,
+          "detail": "expected substring: pub enum SettingError"
+        },
+        {
+          "name": "cargo_test",
+          "passed": true,
+          "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 3 tests\n...\ntest result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+        }
+      ],
+      "runtime_success": true,
+      "validator_count": 3,
+      "validators_passed": 3,
+      "event_count": 72,
+      "iterations_observed": 4,
+      "timed_out": false,
+      "mutating_tool_succeeded": false,
+      "trust": {
+        "audit_log_complete": true,
+        "jsonl_parse_errors": 0,
+        "validation_observed": true,
+        "replay_consistency": "not_checked_worker_cli",
+        "checkpoint_continuity": "not_checked_worker_cli",
+        "no_runtime_error": true
+      },
+      "recovery": {
+        "failure_events": 1,
+        "recovery_events": 3,
+        "retry_stayed_within_policy": true
+      }
+    }
+  ]
+}

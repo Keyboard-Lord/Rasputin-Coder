@@ -1,0 +1,13 @@
+{
+  "id": "expanded_bug_fix_cart",
+  "tier": "expanded",
+  "category": "Expanded: realistic failing-test bug fix",
+  "fixture": "rust_expanded_bug_cart",
+  "max_iterations": 12,
+  "task": "Run or inspect the cart tests, find the subtotal calculation bug, and fix the implementation without changing public struct fields. Complete only after cargo test passes.",
+  "validators": [
+    {
+      "type": "cargo_test"
+    }
+  ]
+}

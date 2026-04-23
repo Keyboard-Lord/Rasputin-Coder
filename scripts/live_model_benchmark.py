@@ -58,9 +58,12 @@ def run_command(
     )
 
 
-def load_corpus() -> list[dict[str, Any]]:
+def load_corpus(tier: str) -> list[dict[str, Any]]:
     data = json.loads(CORPUS.read_text(encoding="utf-8"))
-    return list(data["tasks"])
+    tasks = list(data["tasks"])
+    if tier == "all":
+        return tasks
+    return [task for task in tasks if task.get("tier", "baseline") == tier]
 
 
 def check_ollama(endpoint: str, model: str) -> tuple[bool, str, list[str]]:
@@ -122,6 +125,38 @@ def create_workspace(task: dict[str, Any], workspace: Path, model: str) -> None:
         write_cargo(workspace, "bench_vertical")
         write(workspace / "src" / "lib.rs", "pub fn existing() -> bool {\n    true\n}\n")
         write(workspace / "tests" / "settings_tests.rs", "use bench_vertical::parse_setting;\n\n#[test]\nfn parses_setting() {\n    let setting = parse_setting(\" name = Ada \").expect(\"setting\");\n    assert_eq!(setting.key, \"name\");\n    assert_eq!(setting.value, \"Ada\");\n}\n\n#[test]\nfn rejects_empty_key() {\n    assert!(parse_setting(\" = Ada \").is_none());\n}\n")
+    elif fixture == "rust_expanded_nested_module":
+        write_cargo(workspace, "bench_nested")
+        write(workspace / "src" / "lib.rs", "pub mod auth;\npub mod config;\n")
+        write(workspace / "src" / "auth" / "mod.rs", "pub mod password;\n")
+        write(workspace / "src" / "auth" / "password.rs", "pub fn mask_password(input: &str) -> String {\n    \"*\".repeat(input.len().min(8))\n}\n")
+        write(workspace / "src" / "config.rs", "pub fn service_name() -> &'static str {\n    \"bench-nested\"\n}\n")
+        write(workspace / "tests" / "token_tests.rs", "use bench_nested::auth::token::{bearer_value, is_bearer};\n\n#[test]\nfn detects_bearer_header() {\n    assert!(is_bearer(\"Bearer abc123\"));\n    assert!(!is_bearer(\"Basic abc123\"));\n}\n\n#[test]\nfn extracts_bearer_value() {\n    assert_eq!(bearer_value(\"Bearer abc123\"), Some(\"abc123\".to_string()));\n    assert_eq!(bearer_value(\"Bearer   spaced\"), Some(\"spaced\".to_string()));\n    assert_eq!(bearer_value(\"Bearer\"), None);\n}\n")
+    elif fixture == "rust_expanded_refactor":
+        write_cargo(workspace, "bench_refactor_deep")
+        write(workspace / "src" / "lib.rs", "pub mod audit;\npub mod team;\npub mod user;\n")
+        write(workspace / "src" / "user.rs", "pub fn label_user(name: &str) -> String {\n    format!(\"user:{}\", name)\n}\n")
+        write(workspace / "src" / "team.rs", "pub fn label_team(name: &str) -> String {\n    format!(\"team:{}\", name)\n}\n")
+        write(workspace / "src" / "audit.rs", "pub fn label_audit(name: &str) -> String {\n    format!(\"audit:{}\", name)\n}\n")
+        write(workspace / "tests" / "label_tests.rs", "use bench_refactor_deep::{audit::label_audit, team::label_team, user::label_user};\n\n#[test]\nfn labels_are_stable() {\n    assert_eq!(label_user(\"ada\"), \"user:ada\");\n    assert_eq!(label_team(\"core\"), \"team:core\");\n    assert_eq!(label_audit(\"login\"), \"audit:login\");\n}\n")
+    elif fixture == "rust_expanded_bug_cart":
+        write_cargo(workspace, "bench_cart")
+        write(workspace / "src" / "lib.rs", "pub mod cart;\npub mod discount;\n")
+        write(workspace / "src" / "cart.rs", "#[derive(Debug, Clone)]\npub struct CartItem {\n    pub sku: String,\n    pub price_cents: u32,\n    pub quantity: u32,\n}\n\npub fn subtotal_cents(items: &[CartItem]) -> u32 {\n    items.iter().map(|item| item.quantity).sum()\n}\n")
+        write(workspace / "src" / "discount.rs", "pub fn apply_discount_cents(subtotal: u32, discount: u32) -> u32 {\n    subtotal.saturating_sub(discount)\n}\n")
+        write(workspace / "tests" / "cart_tests.rs", "use bench_cart::cart::{subtotal_cents, CartItem};\n\n#[test]\nfn subtotal_multiplies_price_by_quantity() {\n    let items = vec![\n        CartItem { sku: \"a\".to_string(), price_cents: 250, quantity: 2 },\n        CartItem { sku: \"b\".to_string(), price_cents: 100, quantity: 3 },\n    ];\n    assert_eq!(subtotal_cents(&items), 800);\n}\n")
+    elif fixture == "rust_expanded_find_change":
+        write_cargo(workspace, "bench_settings")
+        write(workspace / "src" / "lib.rs", "pub mod settings;\n")
+        write(workspace / "src" / "settings" / "mod.rs", "pub mod defaults;\npub mod loader;\n")
+        write(workspace / "src" / "settings" / "defaults.rs", "pub const DEFAULT_TIMEOUT_MS: u64 = 2500;\npub const DEFAULT_MAX_RETRIES: u8 = 3;\n")
+        write(workspace / "src" / "settings" / "loader.rs", "use super::defaults::{DEFAULT_MAX_RETRIES, DEFAULT_TIMEOUT_MS};\n\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct RuntimeSettings {\n    pub timeout_ms: u64,\n    pub max_retries: u8,\n}\n\npub fn load_defaults() -> RuntimeSettings {\n    RuntimeSettings { timeout_ms: DEFAULT_TIMEOUT_MS, max_retries: DEFAULT_MAX_RETRIES }\n}\n")
+        write(workspace / "tests" / "settings_tests.rs", "use bench_settings::settings::loader::load_defaults;\n\n#[test]\nfn retry_default_is_updated() {\n    let settings = load_defaults();\n    assert_eq!(settings.timeout_ms, 2500);\n    assert_eq!(settings.max_retries, 5);\n}\n")
+    elif fixture == "rust_expanded_vertical_slice":
+        write_cargo(workspace, "bench_settings_slice")
+        write(workspace / "src" / "lib.rs", "pub mod validation;\n\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct Setting {\n    pub key: String,\n    pub value: String,\n}\n")
+        write(workspace / "src" / "validation.rs", "pub fn is_valid_key(input: &str) -> bool {\n    !input.is_empty() && input.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_')\n}\n")
+        write(workspace / "tests" / "settings_slice_tests.rs", "use bench_settings_slice::{parse_and_validate_setting, SettingError};\n\n#[test]\nfn parses_valid_setting() {\n    let setting = parse_and_validate_setting(\" service_name = Rasputin \").expect(\"setting\");\n    assert_eq!(setting.key, \"service_name\");\n    assert_eq!(setting.value, \"Rasputin\");\n}\n\n#[test]\nfn rejects_empty_key() {\n    assert_eq!(parse_and_validate_setting(\" = value \"), Err(SettingError::EmptyKey));\n}\n\n#[test]\nfn rejects_invalid_key() {\n    assert_eq!(parse_and_validate_setting(\"service-name=value\"), Err(SettingError::InvalidKey));\n}\n")
     else:
         raise ValueError(f"unknown fixture: {fixture}")
 
@@ -151,6 +186,22 @@ def run_validators(workspace: Path, validators: list[dict[str, Any]]) -> list[Va
                     f"expected substring: {text}",
                 )
             )
+        elif kind == "file_not_contains":
+            path = workspace / validator["path"]
+            text = validator["text"]
+            content = path.read_text(encoding="utf-8") if path.exists() else ""
+            results.append(
+                ValidatorResult(
+                    f"file_not_contains:{validator['path']}",
+                    text not in content,
+                    f"forbidden substring: {text}",
+                )
+            )
+        elif kind == "rust_prefix_helper_refactor":
+            path = workspace / validator["path"]
+            content = path.read_text(encoding="utf-8") if path.exists() else ""
+            passed, detail = validate_rust_prefix_helper_refactor(content)
+            results.append(ValidatorResult(f"rust_prefix_helper_refactor:{validator['path']}", passed, detail))
         elif kind == "cargo_test":
             result = run_command(["cargo", "test", "--quiet"], workspace, timeout=180)
             detail = (result.stdout + result.stderr).strip()[-2000:]
@@ -162,6 +213,34 @@ def run_validators(workspace: Path, validators: list[dict[str, Any]]) -> list[Va
         else:
             results.append(ValidatorResult(kind, False, f"unknown validator type: {kind}"))
     return results
+
+
+def validate_rust_prefix_helper_refactor(content: str) -> tuple[bool, str]:
+    required_exports = ("pub fn label_user", "pub fn label_team")
+    missing_exports = [item for item in required_exports if item not in content]
+    if missing_exports:
+        return False, f"missing expected public functions: {', '.join(missing_exports)}"
+
+    if 'format!("user:{}"' in content or 'format!("team:{}"' in content:
+        return False, "repeated direct prefix format calls remain"
+
+    has_private_helper = (
+        "fn " in content
+        and "prefix: &str" in content
+        and "name: &str" in content
+        and "pub fn format" not in content
+    )
+    if not has_private_helper:
+        return False, "expected a private helper taking prefix and name"
+
+    helper_call_count = content.count('("user", name)') + content.count('("team", name)')
+    if helper_call_count < 2:
+        return False, "expected both label functions to call the helper with explicit prefixes"
+
+    if 'format!("{}:{}"' not in content and "format!(\"{prefix}:{name}\")" not in content:
+        return False, "expected helper to centralize prefix formatting"
+
+    return True, "private prefix helper centralizes both label functions"
 
 
 def parse_jsonl(output: str) -> tuple[list[dict[str, Any]], int]:
@@ -308,7 +387,14 @@ def run_task(
     return result
 
 
-def summarize(results: list[dict[str, Any]], run_dir: Path, model: str, endpoint: str, models: list[str]) -> dict[str, Any]:
+def summarize(
+    results: list[dict[str, Any]],
+    run_dir: Path,
+    model: str,
+    endpoint: str,
+    models: list[str],
+    tier: str,
+) -> dict[str, Any]:
     total = len(results)
     passes = sum(1 for result in results if result["classification"] == "PASS")
     partials = sum(1 for result in results if result["classification"] == "PARTIAL")
@@ -329,6 +415,7 @@ def summarize(results: list[dict[str, Any]], run_dir: Path, model: str, endpoint
     summary = {
         "run_dir": str(run_dir),
         "model": model,
+        "tier": tier,
         "endpoint": endpoint,
         "installed_models": models,
         "total": total,
@@ -353,6 +440,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "# Rasputin Live-Model Replacement Benchmark Report",
         "",
         f"- Model: `{summary['model']}`",
+        f"- Tier: `{summary['tier']}`",
         f"- Tasks: {summary['total']}",
         f"- Pass: {summary['pass']} ({summary['pass_rate']:.0%})",
         f"- Partial: {summary['partial']} ({summary['partial_rate']:.0%})",
@@ -394,6 +482,7 @@ def main() -> int:
     parser.add_argument("--model", default="qwen2.5-coder:14b")
     parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT)
     parser.add_argument("--planner", default="http", choices=["http", "stub"])
+    parser.add_argument("--tier", default="baseline", choices=["baseline", "expanded", "all"])
     parser.add_argument("--timeout", type=int, default=420)
     parser.add_argument("--run-id", default=datetime.now().strftime("%Y%m%d-%H%M%S"))
     parser.add_argument("--task", action="append", help="Run only a specific task id. Can be repeated.")
@@ -410,7 +499,7 @@ def main() -> int:
         shutil.rmtree(run_dir)
     run_dir.mkdir(parents=True)
 
-    tasks = load_corpus()
+    tasks = load_corpus(args.tier)
     if args.task:
         selected = set(args.task)
         tasks = [task for task in tasks if task["id"] in selected]
@@ -425,7 +514,7 @@ def main() -> int:
         results.append(run_task(task, run_dir, worker, args.model, args.endpoint, args.planner, args.timeout))
         print(f"  -> {results[-1]['classification']} in {results[-1]['wall_clock_seconds']}s")
 
-    summary = summarize(results, run_dir, args.model, args.endpoint, models)
+    summary = summarize(results, run_dir, args.model, args.endpoint, models, args.tier)
     print()
     print(f"Report: {run_dir / 'report.md'}")
     print(f"Verdict: {summary['final_replacement_verdict']}")

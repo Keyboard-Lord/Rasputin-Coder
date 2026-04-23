@@ -1,0 +1,43 @@
+{
+  "id": "bug_fix_from_failing_test",
+  "category": "Bug fix from failing test",
+  "task": "Run or inspect the tests, find the failing arithmetic bug, and fix the implementation. Complete only after cargo test passes.",
+  "workspace": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/live-qwen14b-repeatability-20260423-r4-corrected/workspaces/bug_fix_from_failing_test",
+  "model": "qwen2.5-coder:14b",
+  "planner": "http",
+  "exit_code": 0,
+  "wall_clock_seconds": 31.68,
+  "classification": "PASS",
+  "validators": [
+    {
+      "name": "file_contains:src/lib.rs",
+      "passed": true,
+      "detail": "expected substring: a + b"
+    },
+    {
+      "name": "cargo_test",
+      "passed": true,
+      "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 1 test\n.\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    }
+  ],
+  "runtime_success": true,
+  "validator_count": 2,
+  "validators_passed": 2,
+  "event_count": 77,
+  "iterations_observed": 5,
+  "timed_out": false,
+  "mutating_tool_succeeded": false,
+  "trust": {
+    "audit_log_complete": true,
+    "jsonl_parse_errors": 0,
+    "validation_observed": true,
+    "replay_consistency": "not_checked_worker_cli",
+    "checkpoint_continuity": "not_checked_worker_cli",
+    "no_runtime_error": true
+  },
+  "recovery": {
+    "failure_events": 0,
+    "recovery_events": 1,
+    "retry_stayed_within_policy": true
+  }
+}

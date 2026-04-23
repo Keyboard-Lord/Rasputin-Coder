@@ -1,0 +1,48 @@
+{
+  "id": "expanded_settings_vertical_slice",
+  "category": "Expanded: multi-surface vertical slice",
+  "task": "Read the whole crate. Add parse_and_validate_setting(input: &str) -> Result<Setting, SettingError>. It must parse key=value, trim whitespace, reject empty keys, reject keys that fail validation::is_valid_key, expose SettingError publicly, and pass the existing tests. Complete only after cargo test passes.",
+  "workspace": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/live-qwen14b-expanded-scope-20260423-r1/workspaces/expanded_settings_vertical_slice",
+  "model": "qwen2.5-coder:14b",
+  "planner": "http",
+  "exit_code": 1,
+  "wall_clock_seconds": 23.37,
+  "classification": "FAIL",
+  "validators": [
+    {
+      "name": "file_contains:src/lib.rs",
+      "passed": false,
+      "detail": "expected substring: parse_and_validate_setting"
+    },
+    {
+      "name": "file_contains:src/lib.rs",
+      "passed": false,
+      "detail": "expected substring: pub enum SettingError"
+    },
+    {
+      "name": "cargo_test",
+      "passed": false,
+      "detail": "error[E0432]: unresolved imports `bench_settings_slice::parse_and_validate_setting`, `bench_settings_slice::SettingError`\n --> tests/settings_slice_tests.rs:1:28\n  |\n1 | use bench_settings_slice::{parse_and_validate_setting, SettingError};\n  |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^ no `SettingError` in the root\n  |                            |\n  |                            no `parse_and_validate_setting` in the root\n\nFor more information about this error, try `rustc --explain E0432`.\nerror: could not compile `bench_settings_slice` (test \"settings_slice_tests\") due to 1 previous error"
+    }
+  ],
+  "runtime_success": false,
+  "validator_count": 3,
+  "validators_passed": 0,
+  "event_count": 67,
+  "iterations_observed": 4,
+  "timed_out": false,
+  "mutating_tool_succeeded": false,
+  "trust": {
+    "audit_log_complete": true,
+    "jsonl_parse_errors": 0,
+    "validation_observed": false,
+    "replay_consistency": "not_checked_worker_cli",
+    "checkpoint_continuity": "not_checked_worker_cli",
+    "no_runtime_error": false
+  },
+  "recovery": {
+    "failure_events": 2,
+    "recovery_events": 0,
+    "retry_stayed_within_policy": true
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "id": "seeded_compile_error_recovery",
+  "category": "Seeded compile error recovery",
+  "fixture": "rust_compile_error",
+  "max_iterations": 10,
+  "task": "This project has a compile error. Read src/lib.rs, repair the compile error, and complete only after cargo check and cargo test pass.",
+  "validators": [
+    {
+      "type": "cargo_check"
+    },
+    {
+      "type": "cargo_test"
+    }
+  ]
+}

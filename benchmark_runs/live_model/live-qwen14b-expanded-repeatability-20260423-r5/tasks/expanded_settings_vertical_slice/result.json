@@ -1,0 +1,48 @@
+{
+  "id": "expanded_settings_vertical_slice",
+  "category": "Expanded: multi-surface vertical slice",
+  "task": "Read the whole crate. Add parse_and_validate_setting(input: &str) -> Result<Setting, SettingError>. It must parse key=value, trim whitespace, reject empty keys, reject keys that fail validation::is_valid_key, expose SettingError publicly, and pass the existing tests. Complete only after cargo test passes.",
+  "workspace": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/live-qwen14b-expanded-repeatability-20260423-r5/workspaces/expanded_settings_vertical_slice",
+  "model": "qwen2.5-coder:14b",
+  "planner": "http",
+  "exit_code": 0,
+  "wall_clock_seconds": 21.5,
+  "classification": "PASS",
+  "validators": [
+    {
+      "name": "file_contains:src/lib.rs",
+      "passed": true,
+      "detail": "expected substring: parse_and_validate_setting"
+    },
+    {
+      "name": "file_contains:src/lib.rs",
+      "passed": true,
+      "detail": "expected substring: pub enum SettingError"
+    },
+    {
+      "name": "cargo_test",
+      "passed": true,
+      "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 3 tests\n...\ntest result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    }
+  ],
+  "runtime_success": true,
+  "validator_count": 3,
+  "validators_passed": 3,
+  "event_count": 72,
+  "iterations_observed": 4,
+  "timed_out": false,
+  "mutating_tool_succeeded": false,
+  "trust": {
+    "audit_log_complete": true,
+    "jsonl_parse_errors": 0,
+    "validation_observed": true,
+    "replay_consistency": "not_checked_worker_cli",
+    "checkpoint_continuity": "not_checked_worker_cli",
+    "no_runtime_error": true
+  },
+  "recovery": {
+    "failure_events": 1,
+    "recovery_events": 3,
+    "retry_stayed_within_policy": true
+  }
+}

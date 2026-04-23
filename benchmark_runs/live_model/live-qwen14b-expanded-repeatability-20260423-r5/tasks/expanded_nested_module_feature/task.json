@@ -1,0 +1,22 @@
+{
+  "id": "expanded_nested_module_feature",
+  "tier": "expanded",
+  "category": "Expanded: nested Rust module feature",
+  "fixture": "rust_expanded_nested_module",
+  "max_iterations": 14,
+  "task": "Read Cargo.toml, src/lib.rs, src/auth/mod.rs, and tests/token_tests.rs. Add the missing auth token module so bearer headers can be detected and parsed. Expose it through the existing auth module tree. Complete only after cargo test passes.",
+  "validators": [
+    {
+      "type": "file_exists",
+      "path": "src/auth/token.rs"
+    },
+    {
+      "type": "file_contains",
+      "path": "src/auth/mod.rs",
+      "text": "pub mod token"
+    },
+    {
+      "type": "cargo_test"
+    }
+  ]
+}

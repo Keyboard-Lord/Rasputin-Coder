@@ -1,0 +1,72 @@
+{
+  "run_dir": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/stub-expanded-tier-smoke-20260423",
+  "model": "qwen2.5-coder:14b",
+  "tier": "expanded",
+  "endpoint": "http://127.0.0.1:11434",
+  "installed_models": [
+    "llama3.1:latest",
+    "qwen2.5-coder:14b",
+    "qwen2.5-coder:latest",
+    "qwen3.5:latest"
+  ],
+  "total": 1,
+  "pass": 0,
+  "partial": 1,
+  "fail": 0,
+  "pass_rate": 0.0,
+  "partial_rate": 1.0,
+  "fail_rate": 0.0,
+  "average_recovery_events": 0.0,
+  "average_operator_interventions": 0.0,
+  "final_replacement_verdict": "usable with caveats",
+  "tasks": [
+    {
+      "id": "expanded_nested_module_feature",
+      "category": "Expanded: nested Rust module feature",
+      "task": "Read Cargo.toml, src/lib.rs, src/auth/mod.rs, and tests/token_tests.rs. Add the missing auth token module so bearer headers can be detected and parsed. Expose it through the existing auth module tree. Complete only after cargo test passes.",
+      "workspace": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/stub-expanded-tier-smoke-20260423/workspaces/expanded_nested_module_feature",
+      "model": "qwen2.5-coder:14b",
+      "planner": "stub",
+      "exit_code": 0,
+      "wall_clock_seconds": 0.47,
+      "classification": "PARTIAL",
+      "validators": [
+        {
+          "name": "file_exists:src/auth/token.rs",
+          "passed": false,
+          "detail": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/stub-expanded-tier-smoke-20260423/workspaces/expanded_nested_module_feature/src/auth/token.rs"
+        },
+        {
+          "name": "file_contains:src/auth/mod.rs",
+          "passed": false,
+          "detail": "expected substring: pub mod token"
+        },
+        {
+          "name": "cargo_test",
+          "passed": false,
+          "detail": "error[E0432]: unresolved import `bench_nested::auth::token`\n --> tests/token_tests.rs:1:25\n  |\n1 | use bench_nested::auth::token::{bearer_value, is_bearer};\n  |                         ^^^^^ could not find `token` in `auth`\n\nFor more information about this error, try `rustc --explain E0432`.\nerror: could not compile `bench_nested` (test \"token_tests\") due to 1 previous error"
+        }
+      ],
+      "runtime_success": true,
+      "validator_count": 3,
+      "validators_passed": 0,
+      "event_count": 61,
+      "iterations_observed": 3,
+      "timed_out": false,
+      "mutating_tool_succeeded": true,
+      "trust": {
+        "audit_log_complete": true,
+        "jsonl_parse_errors": 0,
+        "validation_observed": true,
+        "replay_consistency": "not_checked_worker_cli",
+        "checkpoint_continuity": "not_checked_worker_cli",
+        "no_runtime_error": true
+      },
+      "recovery": {
+        "failure_events": 0,
+        "recovery_events": 0,
+        "retry_stayed_within_policy": true
+      }
+    }
+  ]
+}

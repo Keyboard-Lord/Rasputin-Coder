@@ -1,0 +1,18 @@
+{
+  "id": "expanded_onboarding_settings_change",
+  "tier": "expanded",
+  "category": "Expanded: repo onboarding find-and-change",
+  "fixture": "rust_expanded_find_change",
+  "max_iterations": 12,
+  "task": "Onboard to this settings crate. Find the default maximum retry count and change it from 3 to 5 without changing the timeout default or public loader API. Complete only after cargo test passes.",
+  "validators": [
+    {
+      "type": "file_contains",
+      "path": "src/settings/defaults.rs",
+      "text": "DEFAULT_MAX_RETRIES: u8 = 5"
+    },
+    {
+      "type": "cargo_test"
+    }
+  ]
+}

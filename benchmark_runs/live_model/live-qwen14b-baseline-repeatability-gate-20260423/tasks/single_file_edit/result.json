@@ -1,0 +1,48 @@
+{
+  "id": "single_file_edit",
+  "category": "Single-file edit",
+  "task": "Read Cargo.toml and src/lib.rs first. Add a public function `double(n: i32) -> i32` to src/lib.rs that returns n * 2. Complete only after cargo test passes.",
+  "workspace": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/live-qwen14b-baseline-repeatability-gate-20260423/workspaces/single_file_edit",
+  "model": "qwen2.5-coder:14b",
+  "planner": "http",
+  "exit_code": 0,
+  "wall_clock_seconds": 25.94,
+  "classification": "PASS",
+  "validators": [
+    {
+      "name": "file_contains:src/lib.rs",
+      "passed": true,
+      "detail": "expected substring: pub fn double"
+    },
+    {
+      "name": "file_contains:src/lib.rs",
+      "passed": true,
+      "detail": "expected substring: n * 2"
+    },
+    {
+      "name": "cargo_test",
+      "passed": true,
+      "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 1 test\n.\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    }
+  ],
+  "runtime_success": true,
+  "validator_count": 3,
+  "validators_passed": 3,
+  "event_count": 48,
+  "iterations_observed": 2,
+  "timed_out": false,
+  "mutating_tool_succeeded": false,
+  "trust": {
+    "audit_log_complete": true,
+    "jsonl_parse_errors": 0,
+    "validation_observed": true,
+    "replay_consistency": "not_checked_worker_cli",
+    "checkpoint_continuity": "not_checked_worker_cli",
+    "no_runtime_error": true
+  },
+  "recovery": {
+    "failure_events": 0,
+    "recovery_events": 0,
+    "retry_stayed_within_policy": true
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "id": "expanded_shared_helper_refactor",
+  "category": "Expanded: coordinated multi-file refactor",
+  "task": "Read the crate modules and tests. Refactor the repeated label prefix formatting into a shared helper module at src/formatting.rs, wire it from src/lib.rs, and update user/team/audit modules to use it without changing the public API. Complete only after cargo test passes.",
+  "workspace": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/live-qwen14b-expanded-hardening-20260423-r1/workspaces/expanded_shared_helper_refactor",
+  "model": "qwen2.5-coder:14b",
+  "planner": "http",
+  "exit_code": 0,
+  "wall_clock_seconds": 20.4,
+  "classification": "PASS",
+  "validators": [
+    {
+      "name": "file_exists:src/formatting.rs",
+      "passed": true,
+      "detail": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/live-qwen14b-expanded-hardening-20260423-r1/workspaces/expanded_shared_helper_refactor/src/formatting.rs"
+    },
+    {
+      "name": "file_contains:src/lib.rs",
+      "passed": true,
+      "detail": "expected substring: mod formatting"
+    },
+    {
+      "name": "file_not_contains:src/user.rs",
+      "passed": true,
+      "detail": "forbidden substring: format!(\"user:{}\""
+    },
+    {
+      "name": "file_not_contains:src/team.rs",
+      "passed": true,
+      "detail": "forbidden substring: format!(\"team:{}\""
+    },
+    {
+      "name": "file_not_contains:src/audit.rs",
+      "passed": true,
+      "detail": "forbidden substring: format!(\"audit:{}\""
+    },
+    {
+      "name": "cargo_test",
+      "passed": true,
+      "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 1 test\n.\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    }
+  ],
+  "runtime_success": true,
+  "validator_count": 6,
+  "validators_passed": 6,
+  "event_count": 75,
+  "iterations_observed": 4,
+  "timed_out": false,
+  "mutating_tool_succeeded": false,
+  "trust": {
+    "audit_log_complete": true,
+    "jsonl_parse_errors": 0,
+    "validation_observed": true,
+    "replay_consistency": "not_checked_worker_cli",
+    "checkpoint_continuity": "not_checked_worker_cli",
+    "no_runtime_error": true
+  },
+  "recovery": {
+    "failure_events": 1,
+    "recovery_events": 6,
+    "retry_stayed_within_policy": true
+  }
+}

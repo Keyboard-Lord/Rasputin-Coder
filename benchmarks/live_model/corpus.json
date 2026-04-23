@@ -33,7 +33,7 @@
       "max_iterations": 10,
       "task": "Read src/lib.rs and tests/refactor_tests.rs. Refactor the repeated prefix formatting logic into a private helper without changing behavior. Complete only after cargo test passes.",
       "validators": [
-        {"type": "file_contains", "path": "src/lib.rs", "text": "fn format_with_prefix"},
+        {"type": "rust_prefix_helper_refactor", "path": "src/lib.rs"},
         {"type": "cargo_test"}
       ]
     },
@@ -90,6 +90,71 @@
       "validators": [
         {"type": "file_contains", "path": "src/lib.rs", "text": "pub struct Setting"},
         {"type": "file_contains", "path": "src/lib.rs", "text": "parse_setting"},
+        {"type": "cargo_test"}
+      ]
+    },
+    {
+      "id": "expanded_nested_module_feature",
+      "tier": "expanded",
+      "category": "Expanded: nested Rust module feature",
+      "fixture": "rust_expanded_nested_module",
+      "max_iterations": 14,
+      "task": "Read Cargo.toml, src/lib.rs, src/auth/mod.rs, and tests/token_tests.rs. Add the missing auth token module so bearer headers can be detected and parsed. Expose it through the existing auth module tree. Complete only after cargo test passes.",
+      "validators": [
+        {"type": "file_exists", "path": "src/auth/token.rs"},
+        {"type": "file_contains", "path": "src/auth/mod.rs", "text": "pub mod token"},
+        {"type": "cargo_test"}
+      ]
+    },
+    {
+      "id": "expanded_shared_helper_refactor",
+      "tier": "expanded",
+      "category": "Expanded: coordinated multi-file refactor",
+      "fixture": "rust_expanded_refactor",
+      "max_iterations": 16,
+      "task": "Read the crate modules and tests. Refactor the repeated label prefix formatting into a shared helper module at src/formatting.rs, wire it from src/lib.rs, and update user/team/audit modules to use it without changing the public API. Complete only after cargo test passes.",
+      "validators": [
+        {"type": "file_exists", "path": "src/formatting.rs"},
+        {"type": "file_contains", "path": "src/lib.rs", "text": "mod formatting"},
+        {"type": "file_not_contains", "path": "src/user.rs", "text": "format!(\"user:{}\""},
+        {"type": "file_not_contains", "path": "src/team.rs", "text": "format!(\"team:{}\""},
+        {"type": "file_not_contains", "path": "src/audit.rs", "text": "format!(\"audit:{}\""},
+        {"type": "cargo_test"}
+      ]
+    },
+    {
+      "id": "expanded_bug_fix_cart",
+      "tier": "expanded",
+      "category": "Expanded: realistic failing-test bug fix",
+      "fixture": "rust_expanded_bug_cart",
+      "max_iterations": 12,
+      "task": "Run or inspect the cart tests, find the subtotal calculation bug, and fix the implementation without changing public struct fields. Complete only after cargo test passes.",
+      "validators": [
+        {"type": "cargo_test"}
+      ]
+    },
+    {
+      "id": "expanded_onboarding_settings_change",
+      "tier": "expanded",
+      "category": "Expanded: repo onboarding find-and-change",
+      "fixture": "rust_expanded_find_change",
+      "max_iterations": 12,
+      "task": "Onboard to this settings crate. Find the default maximum retry count and change it from 3 to 5 without changing the timeout default or public loader API. Complete only after cargo test passes.",
+      "validators": [
+        {"type": "file_contains", "path": "src/settings/defaults.rs", "text": "DEFAULT_MAX_RETRIES: u8 = 5"},
+        {"type": "cargo_test"}
+      ]
+    },
+    {
+      "id": "expanded_settings_vertical_slice",
+      "tier": "expanded",
+      "category": "Expanded: multi-surface vertical slice",
+      "fixture": "rust_expanded_vertical_slice",
+      "max_iterations": 16,
+      "task": "Read the whole crate. Add parse_and_validate_setting(input: &str) -> Result<Setting, SettingError>. It must parse key=value, trim whitespace, reject empty keys, reject keys that fail validation::is_valid_key, expose SettingError publicly, and pass the existing tests. Complete only after cargo test passes.",
+      "validators": [
+        {"type": "file_contains", "path": "src/lib.rs", "text": "parse_and_validate_setting"},
+        {"type": "file_contains", "path": "src/lib.rs", "text": "pub enum SettingError"},
         {"type": "cargo_test"}
       ]
     }

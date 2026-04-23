@@ -1,0 +1,37 @@
+{
+  "id": "expanded_shared_helper_refactor",
+  "tier": "expanded",
+  "category": "Expanded: coordinated multi-file refactor",
+  "fixture": "rust_expanded_refactor",
+  "max_iterations": 16,
+  "task": "Read the crate modules and tests. Refactor the repeated label prefix formatting into a shared helper module at src/formatting.rs, wire it from src/lib.rs, and update user/team/audit modules to use it without changing the public API. Complete only after cargo test passes.",
+  "validators": [
+    {
+      "type": "file_exists",
+      "path": "src/formatting.rs"
+    },
+    {
+      "type": "file_contains",
+      "path": "src/lib.rs",
+      "text": "mod formatting"
+    },
+    {
+      "type": "file_not_contains",
+      "path": "src/user.rs",
+      "text": "format!(\"user:{}\""
+    },
+    {
+      "type": "file_not_contains",
+      "path": "src/team.rs",
+      "text": "format!(\"team:{}\""
+    },
+    {
+      "type": "file_not_contains",
+      "path": "src/audit.rs",
+      "text": "format!(\"audit:{}\""
+    },
+    {
+      "type": "cargo_test"
+    }
+  ]
+}

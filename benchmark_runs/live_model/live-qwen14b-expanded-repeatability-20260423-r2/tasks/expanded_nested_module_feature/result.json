@@ -1,0 +1,48 @@
+{
+  "id": "expanded_nested_module_feature",
+  "category": "Expanded: nested Rust module feature",
+  "task": "Read Cargo.toml, src/lib.rs, src/auth/mod.rs, and tests/token_tests.rs. Add the missing auth token module so bearer headers can be detected and parsed. Expose it through the existing auth module tree. Complete only after cargo test passes.",
+  "workspace": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/live-qwen14b-expanded-repeatability-20260423-r2/workspaces/expanded_nested_module_feature",
+  "model": "qwen2.5-coder:14b",
+  "planner": "http",
+  "exit_code": 0,
+  "wall_clock_seconds": 29.07,
+  "classification": "PASS",
+  "validators": [
+    {
+      "name": "file_exists:src/auth/token.rs",
+      "passed": true,
+      "detail": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/live_model/live-qwen14b-expanded-repeatability-20260423-r2/workspaces/expanded_nested_module_feature/src/auth/token.rs"
+    },
+    {
+      "name": "file_contains:src/auth/mod.rs",
+      "passed": true,
+      "detail": "expected substring: pub mod token"
+    },
+    {
+      "name": "cargo_test",
+      "passed": true,
+      "detail": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 2 tests\n..\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    }
+  ],
+  "runtime_success": true,
+  "validator_count": 3,
+  "validators_passed": 3,
+  "event_count": 98,
+  "iterations_observed": 4,
+  "timed_out": false,
+  "mutating_tool_succeeded": true,
+  "trust": {
+    "audit_log_complete": true,
+    "jsonl_parse_errors": 0,
+    "validation_observed": true,
+    "replay_consistency": "not_checked_worker_cli",
+    "checkpoint_continuity": "not_checked_worker_cli",
+    "no_runtime_error": true
+  },
+  "recovery": {
+    "failure_events": 4,
+    "recovery_events": 5,
+    "retry_stayed_within_policy": true
+  }
+}

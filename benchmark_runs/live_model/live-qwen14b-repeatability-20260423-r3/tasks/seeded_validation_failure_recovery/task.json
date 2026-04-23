@@ -1,0 +1,17 @@
+{
+  "id": "seeded_validation_failure_recovery",
+  "category": "Seeded validation failure recovery",
+  "fixture": "rust_validation_failure",
+  "max_iterations": 10,
+  "task": "The implementation compiles but the validation tests fail. Read src/lib.rs and tests/validation_tests.rs, fix the behavior, and complete only after cargo test passes.",
+  "validators": [
+    {
+      "type": "cargo_test"
+    },
+    {
+      "type": "file_contains",
+      "path": "src/lib.rs",
+      "text": "trim()"
+    }
+  ]
+}

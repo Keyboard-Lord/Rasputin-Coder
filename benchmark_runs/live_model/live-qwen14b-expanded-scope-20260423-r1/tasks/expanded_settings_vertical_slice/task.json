@@ -1,0 +1,23 @@
+{
+  "id": "expanded_settings_vertical_slice",
+  "tier": "expanded",
+  "category": "Expanded: multi-surface vertical slice",
+  "fixture": "rust_expanded_vertical_slice",
+  "max_iterations": 16,
+  "task": "Read the whole crate. Add parse_and_validate_setting(input: &str) -> Result<Setting, SettingError>. It must parse key=value, trim whitespace, reject empty keys, reject keys that fail validation::is_valid_key, expose SettingError publicly, and pass the existing tests. Complete only after cargo test passes.",
+  "validators": [
+    {
+      "type": "file_contains",
+      "path": "src/lib.rs",
+      "text": "parse_and_validate_setting"
+    },
+    {
+      "type": "file_contains",
+      "path": "src/lib.rs",
+      "text": "pub enum SettingError"
+    },
+    {
+      "type": "cargo_test"
+    }
+  ]
+}
