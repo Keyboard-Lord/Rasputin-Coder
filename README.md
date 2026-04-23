@@ -1,4 +1,5 @@
 # Rasputin
+<img width="739" height="465" alt="Screenshot 2026-04-22 at 11 49 48 PM" src="https://github.com/user-attachments/assets/895bc987-ff80-4c0f-93a4-d70b073d3906" />
 
 Rasputin is a local terminal-first coding agent that runs in your terminal, connects to local Ollama models, and can execute code changes through a bounded runtime engine called Forge.
 
