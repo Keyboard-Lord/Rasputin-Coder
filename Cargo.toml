@@ -3,11 +3,13 @@ members = [
     "apps/rasputin-tui",
     "crates/forge-runtime",
     "crates/rasputin-interface",
+    "crates/rasputin-forge",
 ]
 default-members = [
     "apps/rasputin-tui",
     "crates/forge-runtime",
     "crates/rasputin-interface",
+    "crates/rasputin-forge",
 ]
 resolver = "2"
 

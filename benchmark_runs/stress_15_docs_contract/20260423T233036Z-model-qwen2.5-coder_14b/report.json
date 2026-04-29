@@ -1,0 +1,1246 @@
+{
+  "status": "partial",
+  "failure_classification": "CRUD failure",
+  "mode": "model",
+  "planner": "http",
+  "model": "qwen2.5-coder:14b",
+  "max_iterations": 24,
+  "endpoint": "http://127.0.0.1:11434",
+  "workspace": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace",
+  "report_path": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/report.json",
+  "stdout_path": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/stdout.jsonl",
+  "stderr_path": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/stderr.txt",
+  "prompt": {
+    "text": "Produce exactly 15 canonical markdown documents for this repository.\nThis is an explicit deliverable contract, not a generic analysis request.\nCreate the files in docs/ with these precise filenames and purposes:\n1. docs/01_PROJECT_OVERVIEW.md - explain the product scope, operator split, and expected outcomes.\n2. docs/02_ARCHITECTURE.md - describe the runtime architecture, core components, and execution boundaries.\n3. docs/03_TECHNOLOGY_STACK.md - inventory the languages, crates, tools, and external dependencies in use.\n4. docs/04_CORE_CONCEPTS.md - define execution state, execution outcome, audit logging, checkpoints, and sealing concepts.\n5. docs/05_FOLDER_STRUCTURE.md - map the repository layout and explain where major responsibilities live.\n6. docs/06_MAIN_WORKFLOWS.md - walk through the primary execution, validation, recovery, and operator workflows.\n7. docs/07_API_REFERENCE.md - document the important public interfaces, entrypoints, commands, and runtime surfaces.\n8. docs/08_DATA_MODEL.md - describe the durable records, state objects, event payloads, and artifact contracts.\n9. docs/09_CONFIGURATION.md - explain environment variables, workspace config, model config, and runtime knobs.\n10. docs/10_DEVELOPMENT_GUIDE.md - show how to build, run, test, and safely change the system.\n11. docs/11_TESTING_STRATEGY.md - explain deterministic coverage, benchmark coverage, stress harnesses, and validation gates.\n12. docs/12_DEPLOYMENT_AND_OPERATIONS.md - describe local operation, monitoring, troubleshooting, and upgrade workflow.\n13. docs/13_SECURITY_AND_COMPLIANCE.md - cover fail-closed behavior, trust boundaries, auditability, and operator controls.\n14. docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md - capture current limitations, non-goals, and architectural tradeoffs.\n15. docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md - outline next hardening steps, extension points, and roadmap direction.\nRequirements:\n- All 15 files must exist.\n- All 15 files must be non-empty markdown.\n- Use the repository contents as grounding.\n- Do not invent APIs, tests, commands, configuration, or workflows that are not supported by the repo.\n- If the repo lacks information, say so explicitly inside the relevant document instead of hallucinating.\n- Each file should use a clear H1 title and specific repo-grounded sections.\n- Do not merge files, rename files, or skip files.\n- Do not stop after creating a subset.\nCompletion contract:\n- Final success is true only when the exact 15-file set exists and is non-empty.\n- Partial output is not complete.",
+    "required_count": 15,
+    "required_files": [
+      "docs/01_PROJECT_OVERVIEW.md",
+      "docs/02_ARCHITECTURE.md",
+      "docs/03_TECHNOLOGY_STACK.md",
+      "docs/04_CORE_CONCEPTS.md",
+      "docs/05_FOLDER_STRUCTURE.md",
+      "docs/06_MAIN_WORKFLOWS.md",
+      "docs/07_API_REFERENCE.md",
+      "docs/08_DATA_MODEL.md",
+      "docs/09_CONFIGURATION.md",
+      "docs/10_DEVELOPMENT_GUIDE.md",
+      "docs/11_TESTING_STRATEGY.md",
+      "docs/12_DEPLOYMENT_AND_OPERATIONS.md",
+      "docs/13_SECURITY_AND_COMPLIANCE.md",
+      "docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md",
+      "docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md"
+    ]
+  },
+  "workspace_state": {
+    "docs_exists": true,
+    "existing_required_files": [
+      "docs/01_PROJECT_OVERVIEW.md",
+      "docs/02_ARCHITECTURE.md",
+      "docs/03_TECHNOLOGY_STACK.md",
+      "docs/04_CORE_CONCEPTS.md"
+    ],
+    "missing_required_files": [
+      "docs/05_FOLDER_STRUCTURE.md",
+      "docs/06_MAIN_WORKFLOWS.md",
+      "docs/07_API_REFERENCE.md",
+      "docs/08_DATA_MODEL.md",
+      "docs/09_CONFIGURATION.md",
+      "docs/10_DEVELOPMENT_GUIDE.md",
+      "docs/11_TESTING_STRATEGY.md",
+      "docs/12_DEPLOYMENT_AND_OPERATIONS.md",
+      "docs/13_SECURITY_AND_COMPLIANCE.md",
+      "docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md",
+      "docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md"
+    ],
+    "empty_required_files": [],
+    "markdown_files_in_docs": [
+      "docs/01_PROJECT_OVERVIEW.md",
+      "docs/02_ARCHITECTURE.md",
+      "docs/03_TECHNOLOGY_STACK.md",
+      "docs/04_CORE_CONCEPTS.md"
+    ],
+    "unexpected_markdown_files": [],
+    "all_markdown_files": [
+      "README.md",
+      "docs/01_PROJECT_OVERVIEW.md",
+      "docs/02_ARCHITECTURE.md",
+      "docs/03_TECHNOLOGY_STACK.md",
+      "docs/04_CORE_CONCEPTS.md",
+      "docs_seed.md"
+    ]
+  },
+  "drift": {
+    "detected": false,
+    "signals": [],
+    "runtime_start_message": "Starting task: Produce exactly 15 canonical markdown documents for this repository.\nThis is an explicit deliverable contract, not a generic analysis request.\nCreate the files in docs/ with these precise filenames and purposes:\n1. docs/01_PROJECT_OVERVIEW.md - explain the product scope, operator split, and expected outcomes.\n2. docs/02_ARCHITECTURE.md - describe the runtime architecture, core components, and execution boundaries.\n3. docs/03_TECHNOLOGY_STACK.md - inventory the languages, crates, tools, and external dependencies in use.\n4. docs/04_CORE_CONCEPTS.md - define execution state, execution outcome, audit logging, checkpoints, and sealing concepts.\n5. docs/05_FOLDER_STRUCTURE.md - map the repository layout and explain where major responsibilities live.\n6. docs/06_MAIN_WORKFLOWS.md - walk through the primary execution, validation, recovery, and operator workflows.\n7. docs/07_API_REFERENCE.md - document the important public interfaces, entrypoints, commands, and runtime surfaces.\n8. docs/08_DATA_MODEL.md - describe the durable records, state objects, event payloads, and artifact contracts.\n9. docs/09_CONFIGURATION.md - explain environment variables, workspace config, model config, and runtime knobs.\n10. docs/10_DEVELOPMENT_GUIDE.md - show how to build, run, test, and safely change the system.\n11. docs/11_TESTING_STRATEGY.md - explain deterministic coverage, benchmark coverage, stress harnesses, and validation gates.\n12. docs/12_DEPLOYMENT_AND_OPERATIONS.md - describe local operation, monitoring, troubleshooting, and upgrade workflow.\n13. docs/13_SECURITY_AND_COMPLIANCE.md - cover fail-closed behavior, trust boundaries, auditability, and operator controls.\n14. docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md - capture current limitations, non-goals, and architectural tradeoffs.\n15. docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md - outline next hardening steps, extension points, and roadmap direction.\nRequirements:\n- All 15 files must exist.\n- All 15 files must be non-empty markdown.\n- Use the repository contents as grounding.\n- Do not invent APIs, tests, commands, configuration, or workflows that are not supported by the repo.\n- If the repo lacks information, say so explicitly inside the relevant document instead of hallucinating.\n- Each file should use a clear H1 title and specific repo-grounded sections.\n- Do not merge files, rename files, or skip files.\n- Do not stop after creating a subset.\nCompletion contract:\n- Final success is true only when the exact 15-file set exists and is non-empty.\n- Partial output is not complete.",
+    "touched_required_files": [],
+    "touched_paths": [
+      "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/01_PROJECT_OVERVIEW.md",
+      "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/02_ARCHITECTURE.md",
+      "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/03_TECHNOLOGY_STACK.md",
+      "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/04_CORE_CONCEPTS.md"
+    ]
+  },
+  "completion_outcome": {
+    "process_exit_code": 1,
+    "jsonl_parse_errors": 0,
+    "event_counts": {
+      "RUNTIME_INIT": 1,
+      "ENFORCEMENT_MODE": 1,
+      "RUNTIME_START": 1,
+      "ITERATION_START": 5,
+      "PREFLIGHT_PASSED": 5,
+      "CONTEXT_ASSEMBLED": 1,
+      "PROTOCOL_VALIDATION_START": 4,
+      "PROTOCOL_VALIDATION_ACCEPT": 4,
+      "PLANNER_OUTPUT": 4,
+      "TOOL_CALL_PARSED": 4,
+      "TOOL_VALID": 4,
+      "READ_BEFORE_WRITE_ALLOW": 4,
+      "TOOL_EXECUTE": 4,
+      "TOOL_SUCCESS": 4,
+      "MUTATIONS_DETECTED": 4,
+      "VALIDATION_RUNNING": 4,
+      "VALIDATION_STAGE": 20,
+      "VALIDATION_ACCEPT": 4,
+      "STATE_COMMITTED": 4,
+      "RUNTIME_ERROR": 1,
+      "RUNTIME_COMPLETE": 1
+    },
+    "runtime_complete_seen": true,
+    "completion_gate_accept_seen": false,
+    "completion_gate_reject_count": 0,
+    "max_iterations_exceeded": false,
+    "completion_messages": [
+      "Runtime finished with status: Error"
+    ]
+  },
+  "evidence": {
+    "runtime_events": [
+      {
+        "event_type": "RUNTIME_INIT",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987036854,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Runtime initialized with http_ollama planner (session: forge-1776987036839-00000000)",
+        "metadata": {}
+      },
+      {
+        "event_type": "ENFORCEMENT_MODE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987036854,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Hardened enforcement enabled: ProtocolValidator chokepoint + CompletionGate + ReadBeforeWriteGate",
+        "metadata": {}
+      },
+      {
+        "event_type": "RUNTIME_START",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987036854,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Starting task: Produce exactly 15 canonical markdown documents for this repository.\nThis is an explicit deliverable contract, not a generic analysis request.\nCreate the files in docs/ with these precise filenames and purposes:\n1. docs/01_PROJECT_OVERVIEW.md - explain the product scope, operator split, and expected outcomes.\n2. docs/02_ARCHITECTURE.md - describe the runtime architecture, core components, and execution boundaries.\n3. docs/03_TECHNOLOGY_STACK.md - inventory the languages, crates, tools, and external dependencies in use.\n4. docs/04_CORE_CONCEPTS.md - define execution state, execution outcome, audit logging, checkpoints, and sealing concepts.\n5. docs/05_FOLDER_STRUCTURE.md - map the repository layout and explain where major responsibilities live.\n6. docs/06_MAIN_WORKFLOWS.md - walk through the primary execution, validation, recovery, and operator workflows.\n7. docs/07_API_REFERENCE.md - document the important public interfaces, entrypoints, commands, and runtime surfaces.\n8. docs/08_DATA_MODEL.md - describe the durable records, state objects, event payloads, and artifact contracts.\n9. docs/09_CONFIGURATION.md - explain environment variables, workspace config, model config, and runtime knobs.\n10. docs/10_DEVELOPMENT_GUIDE.md - show how to build, run, test, and safely change the system.\n11. docs/11_TESTING_STRATEGY.md - explain deterministic coverage, benchmark coverage, stress harnesses, and validation gates.\n12. docs/12_DEPLOYMENT_AND_OPERATIONS.md - describe local operation, monitoring, troubleshooting, and upgrade workflow.\n13. docs/13_SECURITY_AND_COMPLIANCE.md - cover fail-closed behavior, trust boundaries, auditability, and operator controls.\n14. docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md - capture current limitations, non-goals, and architectural tradeoffs.\n15. docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md - outline next hardening steps, extension points, and roadmap direction.\nRequirements:\n- All 15 files must exist.\n- All 15 files must be non-empty markdown.\n- Use the repository contents as grounding.\n- Do not invent APIs, tests, commands, configuration, or workflows that are not supported by the repo.\n- If the repo lacks information, say so explicitly inside the relevant document instead of hallucinating.\n- Each file should use a clear H1 title and specific repo-grounded sections.\n- Do not merge files, rename files, or skip files.\n- Do not stop after creating a subset.\nCompletion contract:\n- Final success is true only when the exact 15-file set exists and is non-empty.\n- Partial output is not complete.",
+        "metadata": {}
+      },
+      {
+        "event_type": "ITERATION_START",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987036855,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "--- Iteration 0 ---",
+        "metadata": {}
+      },
+      {
+        "event_type": "PREFLIGHT_PASSED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987036855,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Checks passed",
+        "metadata": {}
+      },
+      {
+        "event_type": "CONTEXT_ASSEMBLED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987036866,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Assembled context for 'repo shape': read 0 files plus repo shape",
+        "metadata": {}
+      },
+      {
+        "event_type": "PROTOCOL_VALIDATION_START",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065294,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Running ProtocolValidator on planner output",
+        "metadata": {}
+      },
+      {
+        "event_type": "PROTOCOL_VALIDATION_ACCEPT",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065294,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Canonical JSON accepted (fast path)",
+        "metadata": {}
+      },
+      {
+        "event_type": "PLANNER_OUTPUT",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065294,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Output type: tool_call (planner: http_ollama)",
+        "metadata": {}
+      },
+      {
+        "event_type": "TOOL_CALL_PARSED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065294,
+        "severity": "INFO",
+        "tool": "write_file",
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Tool parsed: write_file",
+        "metadata": {
+          "arguments": "{\"content\":\"# Project Overview\\n\\nThis project is a Rust Cargo package/workspace. It includes the following components:\\n\\n- **Manifests**: `Cargo.toml`\\n- **Entrypoints**: `src/lib.rs`\\n- **Source files**: `src/audit.rs`, `src/lib.rs`, `src/runtime.rs`, `src/state.rs`\\n- **Tests**: `tests/smoke_test.rs`\\n\\nThe product scope is to provide a robust and efficient system for managing execution state, audit logging, and runtime operations. The operator split involves separating the responsibilities of configuration management, monitoring, and recovery from the core execution logic.\\n\\nExpected outcomes include:\\n\\n- A reliable and scalable runtime environment.\\n- Comprehensive audit logs for security and compliance.\\n- Efficient state management and recovery mechanisms.\",\"path\":\"docs/01_PROJECT_OVERVIEW.md\"}"
+        }
+      },
+      {
+        "event_type": "TOOL_VALID",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065294,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Tool call valid",
+        "metadata": {}
+      },
+      {
+        "event_type": "READ_BEFORE_WRITE_ALLOW",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065294,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Read authority confirmed for docs/01_PROJECT_OVERVIEW.md",
+        "metadata": {}
+      },
+      {
+        "event_type": "TOOL_EXECUTE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065294,
+        "severity": "INFO",
+        "tool": "write_file",
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Executing write_file",
+        "metadata": {}
+      },
+      {
+        "event_type": "TOOL_SUCCESS",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065295,
+        "severity": "INFO",
+        "tool": "write_file",
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Tool succeeded: Wrote 749 bytes to /Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/01_PROJECT_OVERVIEW.md (hash: sha256:24b061f9d) (0 ms)",
+        "metadata": {}
+      },
+      {
+        "event_type": "MUTATIONS_DETECTED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065295,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Detected 1 mutation(s); 0 pending validation mutation(s)",
+        "metadata": {}
+      },
+      {
+        "event_type": "VALIDATION_RUNNING",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065295,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Running validation pipeline",
+        "metadata": {}
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065295,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Syntax stage skipped: no supported validators for mutation set",
+        "metadata": {
+          "stage": "syntax",
+          "summary": "Syntax stage skipped: no supported validators for mutation set",
+          "status": "skipped",
+          "duration_ms": "0"
+        }
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065295,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Format stage skipped: no supported formatter policy detected",
+        "metadata": {
+          "duration_ms": "0",
+          "summary": "Format stage skipped: no supported formatter policy detected",
+          "stage": "format",
+          "status": "skipped"
+        }
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065295,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Lint stage skipped: no supported linter policy detected",
+        "metadata": {
+          "status": "skipped",
+          "stage": "lint",
+          "duration_ms": "0",
+          "summary": "Lint stage skipped: no supported linter policy detected"
+        }
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065295,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Build stage skipped: no supported project build detected",
+        "metadata": {
+          "stage": "build",
+          "status": "skipped",
+          "summary": "Build stage skipped: no supported project build detected",
+          "duration_ms": "0"
+        }
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065295,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Test stage skipped: no supported project tests detected",
+        "metadata": {
+          "summary": "Test stage skipped: no supported project tests detected",
+          "duration_ms": "0",
+          "stage": "test",
+          "status": "skipped"
+        }
+      },
+      {
+        "event_type": "VALIDATION_ACCEPT",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065295,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "\u2713\u2713 All validation passed: All validation stages passed",
+        "metadata": {}
+      },
+      {
+        "event_type": "STATE_COMMITTED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 0,
+        "timestamp": 1776987065297,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [
+          "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/01_PROJECT_OVERVIEW.md"
+        ],
+        "message": "State committed. Files written: 1",
+        "metadata": {}
+      },
+      {
+        "event_type": "ITERATION_START",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987065300,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "--- Iteration 1 ---",
+        "metadata": {}
+      },
+      {
+        "event_type": "PREFLIGHT_PASSED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987065301,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Checks passed",
+        "metadata": {}
+      },
+      {
+        "event_type": "PROTOCOL_VALIDATION_START",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079039,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Running ProtocolValidator on planner output",
+        "metadata": {}
+      },
+      {
+        "event_type": "PROTOCOL_VALIDATION_ACCEPT",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079039,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Canonical JSON accepted (fast path)",
+        "metadata": {}
+      },
+      {
+        "event_type": "PLANNER_OUTPUT",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079039,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Output type: tool_call (planner: http_ollama)",
+        "metadata": {}
+      },
+      {
+        "event_type": "TOOL_CALL_PARSED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079039,
+        "severity": "INFO",
+        "tool": "write_file",
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Tool parsed: write_file",
+        "metadata": {
+          "arguments": "{\"content\":\"# Architecture\\n\\nThis document describes the runtime architecture, core components, and execution boundaries of the project.\\n\\n## Core Components\\n\\n- **Component 1**: Description of Component 1\\n- **Component 2**: Description of Component 2\\n\\n## Execution Boundaries\\n\\n- **Boundary 1**: Description of Boundary 1\\n- **Boundary 2**: Description of Boundary 2\",\"path\":\"docs/02_ARCHITECTURE.md\"}"
+        }
+      },
+      {
+        "event_type": "TOOL_VALID",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079039,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Tool call valid",
+        "metadata": {}
+      },
+      {
+        "event_type": "READ_BEFORE_WRITE_ALLOW",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079041,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Read authority confirmed for docs/02_ARCHITECTURE.md",
+        "metadata": {}
+      },
+      {
+        "event_type": "TOOL_EXECUTE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079041,
+        "severity": "INFO",
+        "tool": "write_file",
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Executing write_file",
+        "metadata": {}
+      },
+      {
+        "event_type": "TOOL_SUCCESS",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079042,
+        "severity": "INFO",
+        "tool": "write_file",
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Tool succeeded: Wrote 350 bytes to /Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/02_ARCHITECTURE.md (hash: sha256:4de545295) (0 ms)",
+        "metadata": {}
+      },
+      {
+        "event_type": "MUTATIONS_DETECTED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079042,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Detected 1 mutation(s); 0 pending validation mutation(s)",
+        "metadata": {}
+      },
+      {
+        "event_type": "VALIDATION_RUNNING",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079042,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Running validation pipeline",
+        "metadata": {}
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079042,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Syntax stage skipped: no supported validators for mutation set",
+        "metadata": {
+          "stage": "syntax",
+          "summary": "Syntax stage skipped: no supported validators for mutation set",
+          "status": "skipped",
+          "duration_ms": "0"
+        }
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079042,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Format stage skipped: no supported formatter policy detected",
+        "metadata": {
+          "duration_ms": "0",
+          "status": "skipped",
+          "stage": "format",
+          "summary": "Format stage skipped: no supported formatter policy detected"
+        }
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079042,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Lint stage skipped: no supported linter policy detected",
+        "metadata": {
+          "stage": "lint",
+          "summary": "Lint stage skipped: no supported linter policy detected",
+          "duration_ms": "0",
+          "status": "skipped"
+        }
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079042,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Build stage skipped: no supported project build detected",
+        "metadata": {
+          "stage": "build",
+          "summary": "Build stage skipped: no supported project build detected",
+          "duration_ms": "0",
+          "status": "skipped"
+        }
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079042,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Test stage skipped: no supported project tests detected",
+        "metadata": {
+          "stage": "test",
+          "status": "skipped",
+          "duration_ms": "0",
+          "summary": "Test stage skipped: no supported project tests detected"
+        }
+      },
+      {
+        "event_type": "VALIDATION_ACCEPT",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079042,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "\u2713\u2713 All validation passed: All validation stages passed",
+        "metadata": {}
+      },
+      {
+        "event_type": "STATE_COMMITTED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 1,
+        "timestamp": 1776987079044,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [
+          "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/02_ARCHITECTURE.md"
+        ],
+        "message": "State committed. Files written: 2",
+        "metadata": {}
+      },
+      {
+        "event_type": "ITERATION_START",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987079048,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "--- Iteration 2 ---",
+        "metadata": {}
+      },
+      {
+        "event_type": "PREFLIGHT_PASSED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987079049,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Checks passed",
+        "metadata": {}
+      },
+      {
+        "event_type": "PROTOCOL_VALIDATION_START",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090298,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Running ProtocolValidator on planner output",
+        "metadata": {}
+      },
+      {
+        "event_type": "PROTOCOL_VALIDATION_ACCEPT",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090298,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Canonical JSON accepted (fast path)",
+        "metadata": {}
+      },
+      {
+        "event_type": "PLANNER_OUTPUT",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090298,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Output type: tool_call (planner: http_ollama)",
+        "metadata": {}
+      },
+      {
+        "event_type": "TOOL_CALL_PARSED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090298,
+        "severity": "INFO",
+        "tool": "write_file",
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Tool parsed: write_file",
+        "metadata": {
+          "arguments": "{\"path\":\"docs/03_TECHNOLOGY_STACK.md\",\"content\":\"# Technology Stack\\n\\nThis document outlines the languages, crates, tools, and external dependencies used in this repository.\\n\\n## Languages\\n- Rust\\n\\n## Crates\\n- [serde](https://crates.io/crates/serde)\\n- [tokio](https://crates.io/crates/tokio)\\n\\n## Tools\\n- Cargo (Rust package manager)\\n- Git (version control system)\\n\\n## External Dependencies\\n- None explicitly listed in the repository.\\n\"}"
+        }
+      },
+      {
+        "event_type": "TOOL_VALID",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090298,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Tool call valid",
+        "metadata": {}
+      },
+      {
+        "event_type": "READ_BEFORE_WRITE_ALLOW",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090300,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Read authority confirmed for docs/03_TECHNOLOGY_STACK.md",
+        "metadata": {}
+      },
+      {
+        "event_type": "TOOL_EXECUTE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090300,
+        "severity": "INFO",
+        "tool": "write_file",
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Executing write_file",
+        "metadata": {}
+      },
+      {
+        "event_type": "TOOL_SUCCESS",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090301,
+        "severity": "INFO",
+        "tool": "write_file",
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Tool succeeded: Wrote 382 bytes to /Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/03_TECHNOLOGY_STACK.md (hash: sha256:d1b8adc71) (0 ms)",
+        "metadata": {}
+      },
+      {
+        "event_type": "MUTATIONS_DETECTED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090301,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Detected 1 mutation(s); 0 pending validation mutation(s)",
+        "metadata": {}
+      },
+      {
+        "event_type": "VALIDATION_RUNNING",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090301,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Running validation pipeline",
+        "metadata": {}
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090301,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Syntax stage skipped: no supported validators for mutation set",
+        "metadata": {
+          "stage": "syntax",
+          "summary": "Syntax stage skipped: no supported validators for mutation set",
+          "status": "skipped",
+          "duration_ms": "0"
+        }
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090301,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Format stage skipped: no supported formatter policy detected",
+        "metadata": {
+          "summary": "Format stage skipped: no supported formatter policy detected",
+          "duration_ms": "0",
+          "status": "skipped",
+          "stage": "format"
+        }
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090301,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Lint stage skipped: no supported linter policy detected",
+        "metadata": {
+          "status": "skipped",
+          "stage": "lint",
+          "duration_ms": "0",
+          "summary": "Lint stage skipped: no supported linter policy detected"
+        }
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090301,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Build stage skipped: no supported project build detected",
+        "metadata": {
+          "stage": "build",
+          "status": "skipped",
+          "duration_ms": "0",
+          "summary": "Build stage skipped: no supported project build detected"
+        }
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090301,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Test stage skipped: no supported project tests detected",
+        "metadata": {
+          "stage": "test",
+          "status": "skipped",
+          "summary": "Test stage skipped: no supported project tests detected",
+          "duration_ms": "0"
+        }
+      },
+      {
+        "event_type": "VALIDATION_ACCEPT",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090301,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "\u2713\u2713 All validation passed: All validation stages passed",
+        "metadata": {}
+      },
+      {
+        "event_type": "STATE_COMMITTED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 2,
+        "timestamp": 1776987090304,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [
+          "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/03_TECHNOLOGY_STACK.md"
+        ],
+        "message": "State committed. Files written: 3",
+        "metadata": {}
+      },
+      {
+        "event_type": "ITERATION_START",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987090308,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "--- Iteration 3 ---",
+        "metadata": {}
+      },
+      {
+        "event_type": "PREFLIGHT_PASSED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987090309,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Checks passed",
+        "metadata": {}
+      },
+      {
+        "event_type": "PROTOCOL_VALIDATION_START",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099126,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Running ProtocolValidator on planner output",
+        "metadata": {}
+      },
+      {
+        "event_type": "PROTOCOL_VALIDATION_ACCEPT",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099127,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Canonical JSON accepted (fast path)",
+        "metadata": {}
+      },
+      {
+        "event_type": "PLANNER_OUTPUT",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099127,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Output type: tool_call (planner: http_ollama)",
+        "metadata": {}
+      },
+      {
+        "event_type": "TOOL_CALL_PARSED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099127,
+        "severity": "INFO",
+        "tool": "write_file",
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Tool parsed: write_file",
+        "metadata": {
+          "arguments": "{\"content\":\"# Core Concepts\\n\\n## Execution State\\n- Description of execution state.\\n\\n## Execution Outcome\\n- Description of execution outcome.\\n\\n## Audit Logging\\n- Description of audit logging.\\n\\n## Checkpoints\\n- Description of checkpoints.\\n\\n## Sealing Concepts\\n- Description of sealing concepts.\",\"path\":\"docs/04_CORE_CONCEPTS.md\"}"
+        }
+      },
+      {
+        "event_type": "TOOL_VALID",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099127,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Tool call valid",
+        "metadata": {}
+      },
+      {
+        "event_type": "READ_BEFORE_WRITE_ALLOW",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099131,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Read authority confirmed for docs/04_CORE_CONCEPTS.md",
+        "metadata": {}
+      },
+      {
+        "event_type": "TOOL_EXECUTE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099131,
+        "severity": "INFO",
+        "tool": "write_file",
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Executing write_file",
+        "metadata": {}
+      },
+      {
+        "event_type": "TOOL_SUCCESS",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099132,
+        "severity": "INFO",
+        "tool": "write_file",
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Tool succeeded: Wrote 279 bytes to /Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/04_CORE_CONCEPTS.md (hash: sha256:f7d318112) (0 ms)",
+        "metadata": {}
+      },
+      {
+        "event_type": "MUTATIONS_DETECTED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099132,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Detected 1 mutation(s); 0 pending validation mutation(s)",
+        "metadata": {}
+      },
+      {
+        "event_type": "VALIDATION_RUNNING",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099132,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Running validation pipeline",
+        "metadata": {}
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099132,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Syntax stage skipped: no supported validators for mutation set",
+        "metadata": {
+          "stage": "syntax",
+          "summary": "Syntax stage skipped: no supported validators for mutation set",
+          "duration_ms": "0",
+          "status": "skipped"
+        }
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099132,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Format stage skipped: no supported formatter policy detected",
+        "metadata": {
+          "duration_ms": "0",
+          "summary": "Format stage skipped: no supported formatter policy detected",
+          "stage": "format",
+          "status": "skipped"
+        }
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099132,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Lint stage skipped: no supported linter policy detected",
+        "metadata": {
+          "status": "skipped",
+          "duration_ms": "0",
+          "stage": "lint",
+          "summary": "Lint stage skipped: no supported linter policy detected"
+        }
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099132,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Build stage skipped: no supported project build detected",
+        "metadata": {
+          "stage": "build",
+          "summary": "Build stage skipped: no supported project build detected",
+          "duration_ms": "0",
+          "status": "skipped"
+        }
+      },
+      {
+        "event_type": "VALIDATION_STAGE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099132,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Test stage skipped: no supported project tests detected",
+        "metadata": {
+          "duration_ms": "0",
+          "status": "skipped",
+          "summary": "Test stage skipped: no supported project tests detected",
+          "stage": "test"
+        }
+      },
+      {
+        "event_type": "VALIDATION_ACCEPT",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099132,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "\u2713\u2713 All validation passed: All validation stages passed",
+        "metadata": {}
+      },
+      {
+        "event_type": "STATE_COMMITTED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 3,
+        "timestamp": 1776987099135,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [
+          "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/04_CORE_CONCEPTS.md"
+        ],
+        "message": "State committed. Files written: 4",
+        "metadata": {}
+      },
+      {
+        "event_type": "ITERATION_START",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 4,
+        "timestamp": 1776987099140,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "--- Iteration 4 ---",
+        "metadata": {}
+      },
+      {
+        "event_type": "PREFLIGHT_PASSED",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 4,
+        "timestamp": 1776987099142,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Checks passed",
+        "metadata": {}
+      },
+      {
+        "event_type": "RUNTIME_ERROR",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 4,
+        "timestamp": 1776987129161,
+        "severity": "ERROR",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Runtime error: Planner backend unavailable: curl failed: ",
+        "metadata": {}
+      },
+      {
+        "event_type": "RUNTIME_COMPLETE",
+        "session_id": "forge-1776987036839-00000000",
+        "iteration": 4,
+        "timestamp": 1776987129163,
+        "severity": "INFO",
+        "tool": null,
+        "result_code": null,
+        "affected_paths": [],
+        "message": "Runtime finished with status: Error",
+        "metadata": {}
+      }
+    ]
+  }
+}

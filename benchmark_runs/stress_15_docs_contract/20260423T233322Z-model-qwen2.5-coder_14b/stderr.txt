@@ -1,0 +1,10 @@
+[RUNTIME] Planner model 'qwen2.5-coder:14b' verified locally.
+[RUNTIME] Using HttpModelPlanner with Ollama API at http://127.0.0.1:11434
+[RUNTIME] Model: qwen2.5-coder:14b, Temperature: 0 (enforced), Seed: 42 (deterministic)
+[RUNTIME] CSS compression ENABLED for planner model qwen2.5-coder:14b
+[PLANNER] CSS compression ENABLED
+[GOVERNANCE] FORGE spec v1.0.0 initialized
+[GOVERNANCE] CSS auto-compression is enabled for 14B+ models.
+[GOVERNANCE] Governance is initialized during Forge runtime startup.
+[GOVERNANCE] Active mutation validation path: execution::ValidationEngine.
+[GOVERNANCE] Runtime contract verified

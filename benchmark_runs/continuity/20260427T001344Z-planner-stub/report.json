@@ -1,0 +1,62 @@
+{
+  "run_id": "20260427T001344Z-planner-stub",
+  "timestamp": "2026-04-27T00:13:45.331130+00:00",
+  "planner_type": "stub",
+  "overall_score": "PASS",
+  "scenarios": [
+    {
+      "scenario_name": "artifact_contract_continuation",
+      "passed": true,
+      "turns": [
+        {
+          "turn_number": 1,
+          "user_input": "Create README.md with project documentation",
+          "route_chosen": "UNKNOWN",
+          "resolved_task": "Create README.md with project documentation",
+          "files_before": [
+            "Cargo.toml",
+            "README.md",
+            "src/lib.rs"
+          ],
+          "files_after": [
+            "Cargo.toml",
+            "README.md",
+            "hello.txt",
+            "src/lib.rs"
+          ],
+          "validation_passed": null,
+          "drift_flags": [],
+          "notes": "Initial artifact contract request"
+        },
+        {
+          "turn_number": 2,
+          "user_input": "continue",
+          "route_chosen": "FOLLOW_UP",
+          "resolved_task": "Continue working on: Create RE",
+          "files_before": [
+            "Cargo.toml",
+            "README.md",
+            "hello.txt",
+            "src/lib.rs"
+          ],
+          "files_after": [
+            "Cargo.toml",
+            "README.md",
+            "hello.txt",
+            "src/lib.rs"
+          ],
+          "validation_passed": null,
+          "drift_flags": [
+            "Turn 2 resolved task doesn't reference original contract: Continue working on: Create RE"
+          ],
+          "notes": "Follow-up 'continue'"
+        }
+      ],
+      "final_score": "PASS",
+      "summary": "README exists=True, route=FOLLOW_UP, continuity=True, drifts=1"
+    }
+  ],
+  "drift_summary": [
+    "Turn 2 resolved task doesn't reference original contract: Continue working on: Create RE"
+  ]
+}

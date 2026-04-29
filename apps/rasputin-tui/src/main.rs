@@ -17,26 +17,36 @@ use tracing::{error, info, warn};
 use tracing_subscriber::fmt::writer::BoxMakeWriter;
 
 mod app;
+mod artifact_contract;
+mod artifact_contract_validator;
 mod autonomy;
 mod bootstrap;
 mod browser;
+mod chain_working_memory;
 mod clipboard;
 mod commands;
 mod diff;
+mod doc_generator;
 mod events;
 mod forge_runtime;
 mod goal_planner;
 mod guidance;
 mod host_actions;
 mod interface_integration;
+mod large_prompt_classifier;
+mod large_task_decomposer;
 mod observability;
 mod ollama;
 mod persistence;
 mod repo;
 mod state;
+mod step_prompt_compactor;
+mod supercharged_tools;
 mod syntax;
+mod text;
 mod ui;
 mod validation;
+mod working_memory;
 #[cfg(test)]
 mod validation_tests;
 

@@ -1,0 +1,252 @@
+{
+  "cardinality_violations": 0,
+  "change_history": [
+    {
+      "iteration": 0,
+      "mutation": {
+        "content_hash_after": "sha256:24b061f9de9c03d405615d39a79591cc98a01277eb2b07d257d79425b22ae709",
+        "content_hash_before": null,
+        "mutation_type": "Write",
+        "path": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/01_PROJECT_OVERVIEW.md"
+      },
+      "session_id": "forge-1776987036839-00000000",
+      "timestamp": 1776987065295,
+      "validation_report": {
+        "decision": "Accept",
+        "message": "All validation stages passed",
+        "requires_revert": false,
+        "stage_results": [
+          {
+            "execution_time_ms": 0,
+            "message": "Syntax stage skipped: no supported validators for mutation set",
+            "passed": false,
+            "stage": "Syntax"
+          },
+          {
+            "execution_time_ms": 0,
+            "message": "Format stage skipped: no supported formatter policy detected",
+            "passed": false,
+            "stage": "Format"
+          },
+          {
+            "execution_time_ms": 0,
+            "message": "Lint stage skipped: no supported linter policy detected",
+            "passed": false,
+            "stage": "Lint"
+          },
+          {
+            "execution_time_ms": 0,
+            "message": "Build stage skipped: no supported project build detected",
+            "passed": false,
+            "stage": "Build"
+          },
+          {
+            "execution_time_ms": 0,
+            "message": "Test stage skipped: no supported project tests detected",
+            "passed": false,
+            "stage": "Test"
+          }
+        ]
+      }
+    },
+    {
+      "iteration": 1,
+      "mutation": {
+        "content_hash_after": "sha256:4de5452953ddc92299cc18a4e565336169aae44b9ea8b99824487d01bbe008a5",
+        "content_hash_before": null,
+        "mutation_type": "Write",
+        "path": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/02_ARCHITECTURE.md"
+      },
+      "session_id": "forge-1776987036839-00000000",
+      "timestamp": 1776987079042,
+      "validation_report": {
+        "decision": "Accept",
+        "message": "All validation stages passed",
+        "requires_revert": false,
+        "stage_results": [
+          {
+            "execution_time_ms": 0,
+            "message": "Syntax stage skipped: no supported validators for mutation set",
+            "passed": false,
+            "stage": "Syntax"
+          },
+          {
+            "execution_time_ms": 0,
+            "message": "Format stage skipped: no supported formatter policy detected",
+            "passed": false,
+            "stage": "Format"
+          },
+          {
+            "execution_time_ms": 0,
+            "message": "Lint stage skipped: no supported linter policy detected",
+            "passed": false,
+            "stage": "Lint"
+          },
+          {
+            "execution_time_ms": 0,
+            "message": "Build stage skipped: no supported project build detected",
+            "passed": false,
+            "stage": "Build"
+          },
+          {
+            "execution_time_ms": 0,
+            "message": "Test stage skipped: no supported project tests detected",
+            "passed": false,
+            "stage": "Test"
+          }
+        ]
+      }
+    },
+    {
+      "iteration": 2,
+      "mutation": {
+        "content_hash_after": "sha256:d1b8adc71e00269064dfd573cf5903f6b1938515fe7e0ad9237859f02e54374d",
+        "content_hash_before": null,
+        "mutation_type": "Write",
+        "path": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/03_TECHNOLOGY_STACK.md"
+      },
+      "session_id": "forge-1776987036839-00000000",
+      "timestamp": 1776987090301,
+      "validation_report": {
+        "decision": "Accept",
+        "message": "All validation stages passed",
+        "requires_revert": false,
+        "stage_results": [
+          {
+            "execution_time_ms": 0,
+            "message": "Syntax stage skipped: no supported validators for mutation set",
+            "passed": false,
+            "stage": "Syntax"
+          },
+          {
+            "execution_time_ms": 0,
+            "message": "Format stage skipped: no supported formatter policy detected",
+            "passed": false,
+            "stage": "Format"
+          },
+          {
+            "execution_time_ms": 0,
+            "message": "Lint stage skipped: no supported linter policy detected",
+            "passed": false,
+            "stage": "Lint"
+          },
+          {
+            "execution_time_ms": 0,
+            "message": "Build stage skipped: no supported project build detected",
+            "passed": false,
+            "stage": "Build"
+          },
+          {
+            "execution_time_ms": 0,
+            "message": "Test stage skipped: no supported project tests detected",
+            "passed": false,
+            "stage": "Test"
+          }
+        ]
+      }
+    },
+    {
+      "iteration": 3,
+      "mutation": {
+        "content_hash_after": "sha256:f7d318112803e608070610db3177152bd3bd980772409e64c216f07ba289a41d",
+        "content_hash_before": null,
+        "mutation_type": "Write",
+        "path": "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/04_CORE_CONCEPTS.md"
+      },
+      "session_id": "forge-1776987036839-00000000",
+      "timestamp": 1776987099132,
+      "validation_report": {
+        "decision": "Accept",
+        "message": "All validation stages passed",
+        "requires_revert": false,
+        "stage_results": [
+          {
+            "execution_time_ms": 0,
+            "message": "Syntax stage skipped: no supported validators for mutation set",
+            "passed": false,
+            "stage": "Syntax"
+          },
+          {
+            "execution_time_ms": 0,
+            "message": "Format stage skipped: no supported formatter policy detected",
+            "passed": false,
+            "stage": "Format"
+          },
+          {
+            "execution_time_ms": 0,
+            "message": "Lint stage skipped: no supported linter policy detected",
+            "passed": false,
+            "stage": "Lint"
+          },
+          {
+            "execution_time_ms": 0,
+            "message": "Build stage skipped: no supported project build detected",
+            "passed": false,
+            "stage": "Build"
+          },
+          {
+            "execution_time_ms": 0,
+            "message": "Test stage skipped: no supported project tests detected",
+            "passed": false,
+            "stage": "Test"
+          }
+        ]
+      }
+    }
+  ],
+  "completion_reason": null,
+  "files_read": [],
+  "files_written": [
+    "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/01_PROJECT_OVERVIEW.md",
+    "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/02_ARCHITECTURE.md",
+    "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/03_TECHNOLOGY_STACK.md",
+    "/Users/mcrae/Desktop/Rasputin-1/Rasputin-Coder/benchmark_runs/stress_15_docs_contract/20260423T233036Z-model-qwen2.5-coder_14b/workspace/docs/04_CORE_CONCEPTS.md"
+  ],
+  "iteration": 3,
+  "last_validation_report": {
+    "decision": "Accept",
+    "message": "All validation stages passed",
+    "requires_revert": false,
+    "stage_results": [
+      {
+        "execution_time_ms": 0,
+        "message": "Syntax stage skipped: no supported validators for mutation set",
+        "passed": false,
+        "stage": "Syntax"
+      },
+      {
+        "execution_time_ms": 0,
+        "message": "Format stage skipped: no supported formatter policy detected",
+        "passed": false,
+        "stage": "Format"
+      },
+      {
+        "execution_time_ms": 0,
+        "message": "Lint stage skipped: no supported linter policy detected",
+        "passed": false,
+        "stage": "Lint"
+      },
+      {
+        "execution_time_ms": 0,
+        "message": "Build stage skipped: no supported project build detected",
+        "passed": false,
+        "stage": "Build"
+      },
+      {
+        "execution_time_ms": 0,
+        "message": "Test stage skipped: no supported project tests detected",
+        "passed": false,
+        "stage": "Test"
+      }
+    ]
+  },
+  "max_iterations": 24,
+  "mode": "edit",
+  "pending_validations": [],
+  "previous_hash": "sha256:d19a6b2603d43a956c6657b988b8ec7f81cfc9f0f4e5812612feeb171a897a3f",
+  "session_id": "forge-1776987036839-00000000",
+  "snapshots": [],
+  "state_hash": "sha256:8459a2ea5760508d87e374242a481fce66db4e4b0dce943ba1693740e0a6fb1f",
+  "status": "Running",
+  "task": "Produce exactly 15 canonical markdown documents for this repository.\nThis is an explicit deliverable contract, not a generic analysis request.\nCreate the files in docs/ with these precise filenames and purposes:\n1. docs/01_PROJECT_OVERVIEW.md - explain the product scope, operator split, and expected outcomes.\n2. docs/02_ARCHITECTURE.md - describe the runtime architecture, core components, and execution boundaries.\n3. docs/03_TECHNOLOGY_STACK.md - inventory the languages, crates, tools, and external dependencies in use.\n4. docs/04_CORE_CONCEPTS.md - define execution state, execution outcome, audit logging, checkpoints, and sealing concepts.\n5. docs/05_FOLDER_STRUCTURE.md - map the repository layout and explain where major responsibilities live.\n6. docs/06_MAIN_WORKFLOWS.md - walk through the primary execution, validation, recovery, and operator workflows.\n7. docs/07_API_REFERENCE.md - document the important public interfaces, entrypoints, commands, and runtime surfaces.\n8. docs/08_DATA_MODEL.md - describe the durable records, state objects, event payloads, and artifact contracts.\n9. docs/09_CONFIGURATION.md - explain environment variables, workspace config, model config, and runtime knobs.\n10. docs/10_DEVELOPMENT_GUIDE.md - show how to build, run, test, and safely change the system.\n11. docs/11_TESTING_STRATEGY.md - explain deterministic coverage, benchmark coverage, stress harnesses, and validation gates.\n12. docs/12_DEPLOYMENT_AND_OPERATIONS.md - describe local operation, monitoring, troubleshooting, and upgrade workflow.\n13. docs/13_SECURITY_AND_COMPLIANCE.md - cover fail-closed behavior, trust boundaries, auditability, and operator controls.\n14. docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md - capture current limitations, non-goals, and architectural tradeoffs.\n15. docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md - outline next hardening steps, extension points, and roadmap direction.\nRequirements:\n- All 15 files must exist.\n- All 15 files must be non-empty markdown.\n- Use the repository contents as grounding.\n- Do not invent APIs, tests, commands, configuration, or workflows that are not supported by the repo.\n- If the repo lacks information, say so explicitly inside the relevant document instead of hallucinating.\n- Each file should use a clear H1 title and specific repo-grounded sections.\n- Do not merge files, rename files, or skip files.\n- Do not stop after creating a subset.\nCompletion contract:\n- Final success is true only when the exact 15-file set exists and is non-empty.\n- Partial output is not complete."
+}

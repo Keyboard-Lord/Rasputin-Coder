@@ -9,6 +9,7 @@
 //! - Registry owns registration, executor owns resolution
 //! - Unknown tools fail closed with ForgeError
 
+use crate::tools::batch_tools::{BatchReadFilesTool, BatchReplaceTool, BatchWriteFilesTool, SyncDirectoryTool};
 use crate::tools::browser_preview_tool::BrowserPreviewTool;
 use crate::tools::code_intelligence_tools::{
     DependencyGraphTool, EntryPointDetectorTool, LintRunnerTool, SymbolIndexTool, TestRunnerTool,
@@ -85,6 +86,12 @@ impl ToolRegistry {
 
         // Register browser preview tool
         Self::register_tool(&mut tools, BrowserPreviewTool::new());
+
+        // Register batch processing tools (V2.5)
+        Self::register_tool(&mut tools, BatchReadFilesTool);
+        Self::register_tool(&mut tools, BatchWriteFilesTool);
+        Self::register_tool(&mut tools, BatchReplaceTool);
+        Self::register_tool(&mut tools, SyncDirectoryTool);
 
         Self { tools }
     }

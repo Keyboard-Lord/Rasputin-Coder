@@ -14,6 +14,7 @@ mod chain_registry;
 mod context_assembly;
 mod crypto_hash;
 mod determinism_guard;
+mod explicit_artifact_contract;
 mod execution;
 mod git_grounding;
 mod governance;
@@ -26,6 +27,7 @@ mod runtime_gates;
 mod state;
 mod system_invariants;
 mod task_intake;
+mod working_memory;
 mod tool_registry;
 mod tools;
 mod types;
@@ -104,6 +106,9 @@ fn main() {
         .unwrap_or_else(|| DEFAULT_CODER_14B_MODEL.to_string());
     let planner_endpoint = env_override("FORGE_PLANNER_ENDPOINT")
         .unwrap_or_else(|| "http://127.0.0.1:11434".to_string());
+    let planner_timeout_seconds = env_override("FORGE_PLANNER_TIMEOUT_SECONDS")
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(30);
     let planner_temperature = env_override("FORGE_PLANNER_TEMPERATURE")
         .and_then(|value| value.parse::<f32>().ok())
         .unwrap_or(0.0);
@@ -122,7 +127,7 @@ fn main() {
         planner_type: planner_type.to_string(),
         planner_endpoint,
         planner_model,
-        planner_timeout_seconds: 30,
+        planner_timeout_seconds,
         planner_temperature,
         planner_seed,
         css_compression,
@@ -207,6 +212,7 @@ fn print_help() {
     println!("ENVIRONMENT:");
     println!("    FORGE_PLANNER_MODEL         Model to use (default: qwen2.5-coder:14b)");
     println!("    FORGE_PLANNER_ENDPOINT    Ollama endpoint (default: http://127.0.0.1:11434)");
+    println!("    FORGE_PLANNER_TIMEOUT_SECONDS  Planner request timeout in seconds (default: 30)");
     println!("    FORGE_PLANNER_TEMPERATURE   Temperature 0.0-0.1 (default: 0.0)");
     println!("    FORGE_PLANNER_SEED          Random seed (default: 42)");
     println!("    FORGE_CSS_COMPRESSION       Enable CSS compression (default: auto)");

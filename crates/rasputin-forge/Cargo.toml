@@ -1,0 +1,63 @@
+[package]
+name = "rasputin-forge"
+version = "0.1.0"
+edition = "2021"
+description = "Deep Forge: Air-gapped, self-exhausting code refinement engine"
+authors = ["Rasputin Team"]
+
+[[bin]]
+name = "rasputin-forge"
+path = "src/main.rs"
+
+[dependencies]
+# Core dependencies (no TUI bloat)
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+anyhow = "1.0"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# HTTP client for local Ollama (rustls to avoid OpenSSL dependency)
+reqwest = { version = "0.11", default-features = false, features = ["json", "stream", "rustls-tls"] }
+futures = "0.3"
+
+# Tree-sitter for AST parsing
+tree-sitter = "0.20"
+tree-sitter-rust = "0.20"
+tree-sitter-javascript = "0.20"
+tree-sitter-python = "0.20"
+tree-sitter-go = "0.19"
+
+# Process execution
+tokio-process = "0.2"
+
+# File operations
+walkdir = "2.4"
+tempfile = "3.8"
+
+# CLI parsing
+clap = { version = "4.4", features = ["derive"] }
+
+# Regex for parsing
+regex = "1.10"
+
+# Hashing for content verification
+sha2 = "0.10"
+hex = "0.4"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Async runtime utilities
+tokio-util = "0.7"
+
+# Console output
+console = "0.15"
+indicatif = "0.17"
+
+[dev-dependencies]
+tempfile = "3.8"
+mockall = "0.12"
+tokio-test = "0.4"

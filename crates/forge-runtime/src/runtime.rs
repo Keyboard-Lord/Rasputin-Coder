@@ -408,7 +408,44 @@ impl Runtime {
     /// Create a new runtime instance
     pub fn new(config: RuntimeConfig) -> Result<Self, ForgeError> {
         let mut config = config;
-        let mut state = AgentState::new(config.max_iterations, config.task.clone(), config.mode);
+        
+        // CODEX-LIKE CONTINUITY: Try to load previous state and resolve follow-up
+        let previous_state = AgentState::load_for_continuity();
+        let detected_intent = crate::working_memory::WorkingMemory::detect_follow_up_intent(&config.task);
+        let is_follow_up = detected_intent != crate::working_memory::FollowUpIntent::NewTask;
+        
+        let (mut state, resolved_task) = if is_follow_up {
+            if let Some(ref prev) = previous_state {
+                // Try to resolve follow-up against working memory
+                if let Some(memory) = crate::working_memory::WorkingMemory::from_state(prev) {
+                    let intent = crate::working_memory::WorkingMemory::detect_follow_up_intent(&config.task);
+                    if let Some(resolved) = memory.resolve_follow_up(intent) {
+                        eprintln!("[RUNTIME] Continuity: Resolved '{}' -> '{}'", config.task, resolved);
+                        // Use the ORIGINAL task (from previous state) for the new state,
+                        // not the resolved task. This prevents recursive "Continue working on:" accumulation.
+                        let mut new_state = AgentState::new(config.max_iterations, prev.task.clone(), config.mode);
+                        // Copy relevant context from previous state
+                        new_state.change_history = prev.change_history.clone();
+                        new_state.files_written = prev.files_written.clone();
+                        (new_state, Some(resolved))
+                    } else {
+                        (AgentState::new(config.max_iterations, config.task.clone(), config.mode), None)
+                    }
+                } else {
+                    (AgentState::new(config.max_iterations, config.task.clone(), config.mode), None)
+                }
+            } else {
+                eprintln!("[RUNTIME] Warning: Follow-up '{}' but no previous state found", config.task);
+                (AgentState::new(config.max_iterations, config.task.clone(), config.mode), None)
+            }
+        } else {
+            (AgentState::new(config.max_iterations, config.task.clone(), config.mode), None)
+        };
+        
+        // Note: We don't update config.task here because we want to preserve
+        // the original follow-up input (like "continue") in the saved state,
+        // not the resolved task. The resolved task is only used for this run.
+        
         let session_id = state.session_id.clone();
         let resolved_model = resolve_planner_model(&config.planner_endpoint, &config.planner_model);
         eprintln!("[RUNTIME] {}", resolved_model.note);

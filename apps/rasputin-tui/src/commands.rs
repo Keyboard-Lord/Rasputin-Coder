@@ -159,6 +159,49 @@ pub enum Command {
     DebugMode {
         enabled: bool,
     },
+
+    // V2.5: Documentation generation - chain-aware multi-doc generation
+    DocGenerate {
+        repo_path: Option<String>,
+        output_dir: Option<String>,
+        doc_number: Option<u8>, // None = all 15, Some(n) = generate specific doc
+    },
+    DocGenerateChain {
+        repo_path: String,
+        output_dir: String,
+        current_step: usize, // 1-15 for tracking progress
+    },
+    DocValidate {
+        output_dir: String,
+    },
+    DocStatus,
+
+    // V2.5: Auto-chain large prompts
+    AutoChain {
+        prompt: String,
+        strategy: AutoChainStrategy,
+    },
+    
+    // V2.6: Large prompt decomposer with artifact contract
+    ArtifactContract {
+        prompt: String,
+        auto_detect: bool,
+    },
+}
+
+/// Strategy for auto-chaining large prompts
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AutoChainStrategy {
+    /// Auto-detect based on content
+    Auto,
+    /// Split by document boundaries
+    ByDocument,
+    /// Split by file operations
+    ByFile,
+    /// Split by paragraphs/sections
+    BySection,
+    /// Chunk by token size
+    BySize { max_tokens: usize },
 }
 
 /// Type of replay operation
@@ -717,6 +760,100 @@ pub fn parse_command(text: &str) -> Command {
         return Command::ChainResume { chain_id, force };
     }
 
+    // V2.5: Documentation generation commands
+    if lower == "/doc generate" || lower == "/docs generate" {
+        return Command::DocGenerate {
+            repo_path: None,
+            output_dir: None,
+            doc_number: None,
+        };
+    }
+
+    if lower.starts_with("/doc generate ") || lower.starts_with("/docs generate ") {
+        let args = trimmed.trim_start_matches("/doc generate ")
+            .trim_start_matches("/docs generate ")
+            .trim();
+        
+        let mut repo_path = None;
+        let mut output_dir = None;
+        let mut doc_number = None;
+        
+        // Parse arguments: --repo <path> --out <dir> --doc <n>
+        let parts: Vec<&str> = args.split_whitespace().collect();
+        let mut i = 0;
+        while i < parts.len() {
+            match parts[i] {
+                "--repo" | "-r" => {
+                    if i + 1 < parts.len() {
+                        repo_path = Some(parts[i + 1].to_string());
+                        i += 2;
+                    } else {
+                        i += 1;
+                    }
+                }
+                "--out" | "-o" => {
+                    if i + 1 < parts.len() {
+                        output_dir = Some(parts[i + 1].to_string());
+                        i += 2;
+                    } else {
+                        i += 1;
+                    }
+                }
+                "--doc" | "-d" => {
+                    if i + 1 < parts.len() {
+                        if let Ok(n) = parts[i + 1].parse::<u8>() {
+                            doc_number = Some(n);
+                        }
+                        i += 2;
+                    } else {
+                        i += 1;
+                    }
+                }
+                _ => i += 1,
+            }
+        }
+        
+        return Command::DocGenerate {
+            repo_path,
+            output_dir,
+            doc_number,
+        };
+    }
+
+    if lower == "/doc status" || lower == "/docs status" {
+        return Command::DocStatus;
+    }
+
+    if lower.starts_with("/doc validate ") {
+        let output_dir = trimmed.trim_start_matches("/doc validate ").trim().to_string();
+        return Command::DocValidate { output_dir };
+    }
+
+    // V2.5: Auto-chain command for large prompts
+    if lower.starts_with("/auto-chain ") || lower.starts_with("/chain-auto ") {
+        let prompt = trimmed
+            .trim_start_matches("/auto-chain ")
+            .trim_start_matches("/chain-auto ")
+            .trim()
+            .to_string();
+        
+        // Detect strategy from prompt content
+        let strategy = detect_chain_strategy(&prompt);
+        
+        return Command::AutoChain { prompt, strategy };
+    }
+
+    // V2.6: Artifact contract command for large prompts with explicit deliverables
+    if lower.starts_with("/artifact-contract ") || lower.starts_with("/contract ") {
+        let prompt = trimmed
+            .trim_start_matches("/artifact-contract ")
+            .trim_start_matches("/contract ")
+            .trim()
+            .to_string();
+        
+        return Command::ArtifactContract { prompt, auto_detect: true };
+    }
+
     if trimmed.starts_with('/') {
         return Command::Unknown {
             input: trimmed.to_string(),
@@ -780,6 +917,18 @@ RLEF (Learning):
   /rlef disable <class> -- <guidance>
                             Disable a specific hint
 
+Documentation Generation (V2.5):
+  /doc generate             Generate all 15 canonical documentation files
+  /doc generate --doc <n>   Generate specific document (1-15)
+  /doc generate --repo <path> --out <dir>
+                            Generate docs for specific repo
+  /doc status               Show documentation generation status
+  /doc validate <dir>       Validate generated documentation
+
+Large Prompt Decomposition (V2.6):
+  /artifact-contract <prompt>  Decompose large prompt into bounded chain
+  /contract <prompt>           Alias for /artifact-contract
+
 General:
   /quit                     Exit Rasputin (also Ctrl+C)
 
@@ -804,6 +953,34 @@ Interaction truth:
   Unknown slash commands    Fail explicitly and do not become chat or task text
 
 Read the inspector for task progress. The main chat pane only shows compact task notices."#
+}
+
+/// Detect the optimal chain strategy for a large prompt
+fn detect_chain_strategy(prompt: &str) -> AutoChainStrategy {
+    let lower = prompt.to_lowercase();
+    
+    // Check for 15 canonical docs pattern
+    if lower.contains("canonical") && lower.contains("doc")
+        || lower.matches(".md").count() >= 5
+        || lower.matches("## ").count() >= 10 {
+        return AutoChainStrategy::ByDocument;
+    }
+    
+    // Check for multiple file operations
+    if lower.matches("write_file").count() >= 3
+        || lower.matches("create file").count() >= 3
+        || lower.matches("generate file").count() >= 3 {
+        return AutoChainStrategy::ByFile;
+    }
+    
+    // Check for section-based content
+    if lower.matches("\n## ").count() >= 5
+        || lower.matches("\n### ").count() >= 5 {
+        return AutoChainStrategy::BySection;
+    }
+    
+    // Default: auto-detect at runtime
+    AutoChainStrategy::Auto
 }
 
 #[cfg(test)]

@@ -201,6 +201,7 @@ mod trust_loop_tests {
             id: "test-chain".to_string(),
             name: "Test Chain".to_string(),
             objective: "Test objective".to_string(),
+            raw_prompt: "Test objective".to_string(),
             status: ChainLifecycleStatus::Draft,
             steps: vec![
                 create_test_chain_step("step-1", "Step 1", ChainStepStatus::Completed),
@@ -217,6 +218,7 @@ mod trust_loop_tests {
             total_steps_failed: 0,
             execution_outcome: None,
             force_override_used: false,
+            objective_satisfaction: crate::state::ObjectiveSatisfaction::default(),
             selected_context_files: vec![],
             context_state: None,
             pending_checkpoint: None,
@@ -1205,7 +1207,7 @@ mod trust_loop_tests {
             ),
             (
                 ExecutionState::Validating,
-                ProgressTransitionEvent::CompletionGate,
+                ProgressTransitionEvent::RuntimeFinished { success: true },
                 ExecutionState::Done,
             ),
         ];
@@ -1248,7 +1250,7 @@ mod trust_loop_tests {
             ),
             (
                 ExecutionState::Validating,
-                ProgressTransitionEvent::CompletionGate,
+                ProgressTransitionEvent::RuntimeFinished { success: true },
                 ExecutionState::Done,
             ),
         ];
@@ -1365,7 +1367,7 @@ mod trust_loop_tests {
             TransitionResult::Applied(ExecutionState::Planning)
         ));
 
-        // But non-NewRun events should be rejected
+        // But active non-terminal events should be rejected
         let result2 = reduce_execution_state(
             ExecutionState::Planning,
             ProgressTransitionEvent::ToolCalling {
@@ -1375,10 +1377,22 @@ mod trust_loop_tests {
         );
 
         assert!(matches!(result2, TransitionResult::Rejected { .. }));
+
+        // RuntimeFinished must still be allowed so the reducer can apply terminal state
+        let result3 = reduce_execution_state(
+            ExecutionState::Validating,
+            ProgressTransitionEvent::RuntimeFinished { success: true },
+            true,
+        );
+
+        assert!(matches!(
+            result3,
+            TransitionResult::Applied(ExecutionState::Done)
+        ));
     }
 
     #[test]
-    fn test_reducer_executing_fails_on_tool_result_failure() {
+    fn test_reducer_executing_stays_active_on_tool_result_failure() {
         use crate::state::{
             ExecutionState, ProgressTransitionEvent, TransitionResult, reduce_execution_state,
         };
@@ -1391,7 +1405,7 @@ mod trust_loop_tests {
 
         assert!(matches!(
             result,
-            TransitionResult::Applied(ExecutionState::Failed)
+            TransitionResult::Applied(ExecutionState::Executing)
         ));
     }
 
@@ -1414,7 +1428,7 @@ mod trust_loop_tests {
     }
 
     #[test]
-    fn test_reducer_validating_fails_on_validation_rejection() {
+    fn test_reducer_validating_stays_active_on_validation_rejection() {
         use crate::state::{
             ExecutionState, ProgressTransitionEvent, TransitionResult, reduce_execution_state,
         };
@@ -1427,7 +1441,7 @@ mod trust_loop_tests {
 
         assert!(matches!(
             result,
-            TransitionResult::Applied(ExecutionState::Failed)
+            TransitionResult::Applied(ExecutionState::Validating)
         ));
     }
 
@@ -2922,6 +2936,7 @@ mod self_healing_tests {
             id: "test-chain".to_string(),
             name: "Test Chain".to_string(),
             objective: "Test goal".to_string(),
+            raw_prompt: "Test goal".to_string(),
             status: crate::persistence::ChainLifecycleStatus::Running,
             steps: vec![],
             active_step: None,
@@ -2935,6 +2950,7 @@ mod self_healing_tests {
             total_steps_failed: 0,
             execution_outcome: None,
             force_override_used: false,
+            objective_satisfaction: crate::state::ObjectiveSatisfaction::default(),
             selected_context_files: vec![],
             context_state: None,
             pending_checkpoint: None,
@@ -3302,16 +3318,22 @@ mod completion_confidence_tests {
     //! - Completion confidence prevents over-retry and under-complete
 
     use crate::autonomy::{CompletionConfidenceDecision, CompletionConfidenceEvaluator};
-    use crate::persistence::{ChainPolicy, ChainStepStatus, PersistentChain, PersistentChainStep};
-    use crate::state::{
-        CompletionConfidence, ObjectiveSatisfaction, RequiredSurface, StepOutcomeClass, StepResult,
+    use crate::persistence::{
+        ChainPolicy, ChainStepStatus, ExecutionResultCapture, ExecutionResultClass,
+        PersistentChain, PersistentChainStep,
     };
+    use crate::state::{
+        ArtifactCompletionContract, CompletionConfidence, ObjectiveSatisfaction, RequiredSurface,
+        StepOutcomeClass, StepResult,
+    };
+    use std::fs;
 
     fn create_test_chain_with_steps() -> PersistentChain {
         PersistentChain {
             id: "test-chain".to_string(),
             name: "Test Chain".to_string(),
             objective: "Test goal".to_string(),
+            raw_prompt: "Test goal".to_string(),
             status: crate::persistence::ChainLifecycleStatus::Running,
             steps: vec![PersistentChainStep {
                 id: "step-1".to_string(),
@@ -3345,11 +3367,58 @@ mod completion_confidence_tests {
             total_steps_failed: 0,
             execution_outcome: None,
             force_override_used: false,
+            objective_satisfaction: ObjectiveSatisfaction::default(),
             selected_context_files: vec![],
             context_state: None,
             pending_checkpoint: None,
             git_grounding: None,
             audit_log: crate::state::AuditLog::default(),
+        }
+    }
+
+    fn documentation_contract() -> ArtifactCompletionContract {
+        ArtifactCompletionContract {
+            artifact_type: Some("markdown".to_string()),
+            required_count: Some(15),
+            required_filenames: vec![
+                "docs/01_PROJECT_OVERVIEW.md".to_string(),
+                "docs/02_ARCHITECTURE.md".to_string(),
+                "docs/03_TECHNOLOGY_STACK.md".to_string(),
+                "docs/04_CORE_CONCEPTS.md".to_string(),
+                "docs/05_FOLDER_STRUCTURE.md".to_string(),
+                "docs/06_MAIN_WORKFLOWS.md".to_string(),
+                "docs/07_API_REFERENCE.md".to_string(),
+                "docs/08_DATA_MODEL.md".to_string(),
+                "docs/09_CONFIGURATION.md".to_string(),
+                "docs/10_DEVELOPMENT_GUIDE.md".to_string(),
+                "docs/11_TESTING_STRATEGY.md".to_string(),
+                "docs/12_DEPLOYMENT_AND_OPERATIONS.md".to_string(),
+                "docs/13_SECURITY_AND_COMPLIANCE.md".to_string(),
+                "docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md".to_string(),
+                "docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md".to_string(),
+            ],
+            required_artifacts: vec![],
+            created_filenames: vec![],
+            missing_filenames: vec![],
+            empty_filenames: vec![],
+            unexpected_filenames: vec![],
+            actual_output_count: None,
+            require_non_empty: true,
+        }
+    }
+
+    fn contract_satisfaction(contract: ArtifactCompletionContract) -> ObjectiveSatisfaction {
+        let required_surfaces = contract
+            .required_filenames
+            .iter()
+            .cloned()
+            .map(|path| RequiredSurface::FileExists { path })
+            .collect();
+
+        ObjectiveSatisfaction {
+            required_surfaces,
+            artifact_contract: Some(contract),
+            ..Default::default()
         }
     }
 
@@ -3649,6 +3718,140 @@ mod completion_confidence_tests {
         assert!(matches!(
             decision,
             CompletionConfidenceDecision::HaltForClarification { .. }
+        ));
+    }
+
+    #[test]
+    fn explicit_artifact_contract_missing_files_keeps_chain_non_terminal() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::create_dir_all(temp.path().join("docs")).expect("docs dir");
+        fs::write(
+            temp.path()
+                .join("docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md"),
+            "# future roadmap\n",
+        )
+        .expect("roadmap doc");
+
+        let mut chain = create_test_chain_with_steps();
+        chain.repo_path = Some(temp.path().to_string_lossy().to_string());
+        chain.objective_satisfaction = contract_satisfaction(documentation_contract());
+
+        chain.objective_satisfaction =
+            CompletionConfidenceEvaluator::refresh_objective_satisfaction(&chain);
+        let decision = CompletionConfidenceEvaluator::evaluate_after_step(
+            &chain,
+            &StepResult {
+                outcome_class: StepOutcomeClass::Success,
+                affected_paths: vec!["docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md".to_string()],
+                ..Default::default()
+            },
+            &chain.objective_satisfaction,
+        );
+
+        let contract = chain
+            .objective_satisfaction
+            .artifact_contract
+            .as_ref()
+            .expect("artifact contract");
+        assert_eq!(contract.created_filenames.len(), 1);
+        assert_eq!(contract.missing_filenames.len(), 14);
+        assert!(matches!(
+            decision,
+            CompletionConfidenceDecision::Continue { .. }
+        ));
+    }
+
+    #[test]
+    fn explicit_artifact_contract_finalizes_only_when_full_file_set_exists() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::create_dir_all(temp.path().join("docs")).expect("docs dir");
+
+        for path in documentation_contract().required_filenames {
+            fs::write(temp.path().join(&path), format!("# {}\n", path)).expect("doc file");
+        }
+
+        let mut chain = create_test_chain_with_steps();
+        chain.repo_path = Some(temp.path().to_string_lossy().to_string());
+        chain.objective_satisfaction = contract_satisfaction(documentation_contract());
+
+        chain.objective_satisfaction =
+            CompletionConfidenceEvaluator::refresh_objective_satisfaction(&chain);
+        let decision = CompletionConfidenceEvaluator::evaluate_after_step(
+            &chain,
+            &StepResult {
+                outcome_class: StepOutcomeClass::Success,
+                affected_paths: vec!["docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md".to_string()],
+                ..Default::default()
+            },
+            &chain.objective_satisfaction,
+        );
+
+        let contract = chain
+            .objective_satisfaction
+            .artifact_contract
+            .as_ref()
+            .expect("artifact contract");
+        assert!(contract.is_satisfied());
+        assert!(chain.objective_satisfaction.objective_complete);
+        assert!(matches!(
+            decision,
+            CompletionConfidenceDecision::Finalize { .. }
+        ));
+    }
+
+    #[test]
+    fn explicit_artifact_contract_wrong_file_count_blocks_completion() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::create_dir_all(temp.path().join("docs")).expect("docs dir");
+
+        let contract = documentation_contract();
+        for path in &contract.required_filenames {
+            fs::write(temp.path().join(path), format!("# {}\n", path)).expect("doc file");
+        }
+        fs::write(temp.path().join("docs/16_EXTRA_APPENDIX.md"), "# extra\n").expect("extra doc");
+
+        let mut chain = create_test_chain_with_steps();
+        chain.repo_path = Some(temp.path().to_string_lossy().to_string());
+        chain.objective_satisfaction = contract_satisfaction(contract.clone());
+        chain.steps[0].execution_results.push(ExecutionResultCapture {
+            attempt: 0,
+            result_class: ExecutionResultClass::Success,
+            stdout: String::new(),
+            stderr: String::new(),
+            exit_code: Some(0),
+            test_results: None,
+            error_message: None,
+            failure_reason: None,
+            captured_at: chrono::Local::now(),
+            generated_retry_step_id: None,
+            affected_paths: vec!["docs/16_EXTRA_APPENDIX.md".to_string()],
+        });
+
+        chain.objective_satisfaction =
+            CompletionConfidenceEvaluator::refresh_objective_satisfaction(&chain);
+        let decision = CompletionConfidenceEvaluator::evaluate_after_step(
+            &chain,
+            &StepResult {
+                outcome_class: StepOutcomeClass::Success,
+                affected_paths: vec!["docs/16_EXTRA_APPENDIX.md".to_string()],
+                ..Default::default()
+            },
+            &chain.objective_satisfaction,
+        );
+
+        let refreshed_contract = chain
+            .objective_satisfaction
+            .artifact_contract
+            .as_ref()
+            .expect("artifact contract");
+        assert_eq!(refreshed_contract.actual_output_count, Some(16));
+        assert_eq!(
+            refreshed_contract.unexpected_filenames,
+            vec!["docs/16_EXTRA_APPENDIX.md".to_string()]
+        );
+        assert!(matches!(
+            decision,
+            CompletionConfidenceDecision::Continue { .. }
         ));
     }
 }

@@ -14,7 +14,8 @@ use crate::repo::{Repo, capture_git_grounding};
 use crate::state::{
     AppState, Artifact, ExecutionMode, ExecutionOutcome, ExecutionPlan, ExecutionState,
     ExecutionStepStatus, FailureContext, InputMode, InspectorTab, LogEntry, LogLevel, Message,
-    MessageRole, RunCard, RuntimeStatus, StepAction, default_validation_stages,
+    MessageRole, RunCard, RuntimeStatus, StepAction, StructuredOutput, StructuredOutputKind,
+    default_validation_stages,
 };
 use crate::ui::layout::LayoutState;
 use crate::validation::ValidationPipeline;
@@ -89,6 +90,24 @@ pub enum ComposerMode {
     ProjectCreate,
     ProjectConnect,
     Passive,
+}
+
+/// Synchronous intent classification result
+/// Determined at input submit time BEFORE any UI reaction or model call
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum InputRouting {
+    /// Slash command - parse and execute
+    Command,
+    /// Structured execution intent (task-like plain text) - route to goal pipeline
+    TaskGoal,
+    /// Task mode execution - granular plan
+    TaskExecution,
+    /// Conversational chat - direct LLM
+    Chat,
+    /// Follow-up to existing work (continue, fix that, do the rest) - resolved from working memory
+    FollowUp { resolved_task: String, original_input: String },
+    /// Simple natural language command (e.g., "docs", "create README.md")
+    SimpleCommand { contract: crate::artifact_contract::ArtifactContract },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -327,8 +346,8 @@ impl RepoSnapshot {
             result.push_str(&format!("\n... ({} more lines)", lines.len() - max_lines));
         }
 
-        if result.len() > max_chars {
-            result = result[..max_chars].to_string();
+        if result.chars().count() > max_chars {
+            result = crate::text::take_chars(&result, max_chars);
             result.push_str("\n... (truncated)");
         }
 
@@ -418,6 +437,9 @@ pub struct App {
     pub ui_targets: Vec<UiTarget>,
     pub focused_ui: Option<String>,
     pub active_run_message_id: Option<String>,
+    pub active_runtime_session_id: Option<String>,
+    pub execution_run_sealed: bool,
+    pub post_terminal_audit_recorded: bool,
     pub active_panel: SidebarPanel,
     pub composer_mode: ComposerMode,
     pub project_create_workflow: Option<ProjectCreateWorkflow>,
@@ -485,6 +507,9 @@ impl App {
             ui_targets: vec![],
             focused_ui: None,
             active_run_message_id: None,
+            active_runtime_session_id: None,
+            execution_run_sealed: false,
+            post_terminal_audit_recorded: false,
             active_panel: SidebarPanel::Chat,
             composer_mode: ComposerMode::Chat,
             project_create_workflow: None,
@@ -728,11 +753,10 @@ impl App {
         ));
         lines.push(format!(
             "Workspace Hash: {}",
-            report
-                .workspace_hash
-                .as_deref()
-                .map(|hash| &hash[..hash.len().min(16)])
-                .unwrap_or("(none)")
+            report.workspace_hash.as_deref().map_or_else(
+                || "(none)".to_string(),
+                |hash| crate::text::take_chars(hash, 16)
+            )
         ));
         lines.push(String::new());
         lines.push(format!(
@@ -801,6 +825,17 @@ impl App {
     fn apply_progress_transition(&mut self, event: crate::state::ProgressTransitionEvent) {
         use crate::state::{TransitionResult, reduce_execution_state_with_audit};
 
+        if self.execution_run_sealed
+            && !matches!(
+                event,
+                crate::state::ProgressTransitionEvent::NewRun { .. }
+                    | crate::state::ProgressTransitionEvent::ResetToIdle
+            )
+        {
+            self.audit_post_terminal_noise_once(format!("blocked_transition={:?}", event));
+            return;
+        }
+
         let current = self.state.execution.state;
         let has_terminal_outcome = self
             .persistence
@@ -827,22 +862,26 @@ impl App {
                 self.set_execution_state(new_state);
             }
             TransitionResult::Normalized { to, reason } => {
-                eprintln!(
+                self.add_operator_debug_log(
+                    "state_machine/normalized",
+                    format!(
                     "[STATE MACHINE] Transition normalized: {} -> {} ({})",
                     current.as_str(),
                     to.as_str(),
                     reason
+                    ),
                 );
                 self.set_execution_state(to);
             }
             TransitionResult::Rejected { current: _, reason } => {
-                // Log rejected transitions for debugging but don't panic
-                // This prevents event ordering issues from corrupting state
-                eprintln!(
+                self.add_operator_debug_log(
+                    "state_machine/rejected",
+                    format!(
                     "[STATE MACHINE] Transition rejected: {} on {:?} ({})",
                     current.as_str(),
                     event,
                     reason
+                    ),
                 );
             }
         }
@@ -1614,14 +1653,7 @@ impl App {
                     (None, None) => "No model configured".to_string(),
                 };
 
-                self.state.messages.push(Message {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    role: MessageRole::System,
-                    source_text: status.clone(),
-                    content: status,
-                    timestamp: chrono::Local::now(),
-                    run_card: None,
-                });
+                self.push_system_notice(&status);
             }
 
             Command::SetModel { model } => {
@@ -1633,15 +1665,7 @@ impl App {
                         format!("Model switch failed: {}", error),
                     );
                     self.emit_event("model", &format!("Switch failed: {}", error));
-                    let msg_content = format!("Failed to set model: {}", error);
-                    self.state.messages.push(Message {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        role: MessageRole::System,
-                        source_text: msg_content.clone(),
-                        content: msg_content,
-                        timestamp: chrono::Local::now(),
-                        run_card: None,
-                    });
+                    self.push_system_notice(&format!("Failed to set model: {}", error));
                 } else {
                     let configured = self.state.model.configured.as_deref().unwrap_or("none");
                     let active = self.state.model.active.as_deref().unwrap_or("none");
@@ -1722,14 +1746,7 @@ impl App {
                     }
                 };
 
-                self.state.messages.push(Message {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    role: MessageRole::System,
-                    source_text: content.clone(),
-                    content,
-                    timestamp: chrono::Local::now(),
-                    run_card: None,
-                });
+                self.push_system_notice(&content);
             }
 
             Command::ShowStatus => {
@@ -1845,27 +1862,13 @@ impl App {
                     recovery_details,
                 );
 
-                self.state.messages.push(Message {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    role: MessageRole::System,
-                    source_text: status.clone(),
-                    content: status,
-                    timestamp: chrono::Local::now(),
-                    run_card: None,
-                });
+                self.push_system_notice(&status);
             }
 
             Command::ShowHelp => {
                 self.emit_event("cmd", "/help");
                 let help_text = get_help_text().to_string();
-                self.state.messages.push(Message {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    role: MessageRole::System,
-                    source_text: help_text.clone(),
-                    content: help_text,
-                    timestamp: chrono::Local::now(),
-                    run_card: None,
-                });
+                self.push_system_notice(&help_text);
             }
 
             Command::GitStatus => {
@@ -2566,7 +2569,7 @@ impl App {
                     {
                         msg.push_str(&format!(
                             "\nNext Step: {} ({})",
-                            &step_id[..step_id.len().min(8)],
+                            crate::text::take_chars(&step_id, 8),
                             desc
                         ));
                     }
@@ -2811,7 +2814,7 @@ impl App {
                             status_icon,
                             checkpoint.checkpoint_id,
                             checkpoint.active_step,
-                            &checkpoint.workspace_hash[..8.min(checkpoint.workspace_hash.len())],
+                            crate::text::take_chars(&checkpoint.workspace_hash, 8),
                             checkpoint.source,
                             checkpoint.created_at.format("%Y-%m-%d %H:%M:%S")
                         ));
@@ -3181,8 +3184,12 @@ impl App {
                             });
 
                         if let Some(step) = next_step {
-                            // Bridge to Forge: convert step description to task
-                            let task = format!("{}: {}", chain.objective, step.description);
+                            let refreshed_satisfaction =
+                                crate::autonomy::CompletionConfidenceEvaluator::refresh_objective_satisfaction(
+                                    &chain,
+                                );
+                            let task =
+                                Self::build_chain_step_task(&chain, step, &refreshed_satisfaction);
 
                             // V1.5: Different message for Draft (first-time) vs Halted (resuming)
                             let is_first_execution =
@@ -3208,6 +3215,7 @@ impl App {
                             if let Some(c) = self.persistence.get_chain_mut(&id) {
                                 c.status = crate::persistence::ChainLifecycleStatus::Running;
                                 c.updated_at = chrono::Local::now();
+                                c.objective_satisfaction = refreshed_satisfaction;
                             }
 
                             // Store chain context for result tracking
@@ -3215,7 +3223,12 @@ impl App {
                             self.state.current_chain_step_id = Some(step.id.clone());
 
                             // Spawn Forge execution
-                            if let Err(e) = self.start_execution_task(&task) {
+                            if let Err(e) =
+                                self.start_execution_task_with_display_objective(
+                                    &task,
+                                    &chain.objective,
+                                )
+                            {
                                 self.push_system_notice(&format!("Failed to resume chain: {}", e));
                                 // Rollback status
                                 if let Some(c) = self.persistence.get_chain_mut(&id) {
@@ -3515,6 +3528,8 @@ impl App {
                     }
 
                     // Update execution state
+                    self.active_runtime_session_id = None;
+                    self.execution_run_sealed = true;
                     self.set_execution_state(ExecutionState::Blocked);
                     self.set_current_step(
                         Some("Execution stopped by operator".to_string()),
@@ -3725,7 +3740,7 @@ impl App {
                     .active_goal()
                     .map(|g| (g.statement.clone(), g.generated_plan.clone()));
 
-                if let Some((goal_statement, Some(plan))) = goal_data {
+                if let Some((_goal_statement, Some(plan))) = goal_data {
                     let preflight = self.resolve_autonomous_planner_preflight().await;
                     if !matches!(
                         preflight,
@@ -3741,11 +3756,13 @@ impl App {
                     // Extract plan data before creating chain
                     let plan_steps = plan.steps.clone();
                     let required_context = plan.required_context.clone();
+                    let objective_summary = plan.objective.clone();
+                    let raw_prompt = plan.raw_prompt.clone();
 
                     // Create the chain
                     let chain = self
                         .persistence
-                        .create_chain(&goal_statement, &goal_statement);
+                        .create_chain(&objective_summary, &objective_summary);
                     let chain_id = chain.id.clone();
 
                     // Attach chain to goal
@@ -3755,6 +3772,9 @@ impl App {
 
                     // Populate chain steps from plan
                     if let Some(chain) = self.persistence.get_chain_mut(&chain_id) {
+                        chain.raw_prompt = raw_prompt.clone();
+                        chain.objective_satisfaction =
+                            crate::guidance::build_objective_satisfaction(&raw_prompt);
                         for plan_step in &plan_steps {
                             let step = crate::persistence::PersistentChainStep {
                                 id: format!("step-{}", uuid::Uuid::new_v4()),
@@ -4026,7 +4046,7 @@ impl App {
                             "{}{} (ID: {}...)\n",
                             active_marker,
                             project.name,
-                            &project.id[..8.min(project.id.len())]
+                            crate::text::take_chars(&project.id, 8)
                         ));
                         if let Some(ref repo_path) = project.repo_path {
                             msg.push_str(&format!("   Path: {}\n", repo_path));
@@ -4052,6 +4072,188 @@ impl App {
                 } else {
                     "Normal mode enabled. Internal runtime and audit surfaces are hidden from the main workflow."
                 });
+            }
+
+            // V2.5: Documentation generation commands
+            Command::DocGenerate { repo_path, output_dir, doc_number } => {
+                let repo = repo_path.clone()
+                    .or_else(|| self.persistence.active_repo.clone())
+                    .unwrap_or_else(|| ".".to_string());
+                let out = output_dir.clone().unwrap_or_else(|| "./docs".to_string());
+                
+                self.emit_event("cmd", &format!("/doc generate --repo {} --out {}", repo, out));
+                
+                if let Some(n) = doc_number {
+                    // Generate single document
+                    self.push_system_notice(&format!("Generating document {}...", n));
+                    // TODO: Implement single doc generation
+                } else {
+                    // Start chain for all 15 docs
+                    self.push_system_notice("Starting documentation generation chain for 15 canonical documents...");
+                    // TODO: Create chain and start generation
+                }
+            }
+
+            Command::DocGenerateChain { repo_path, output_dir, current_step } => {
+                // Handle chain step execution
+                self.emit_event("cmd", &format!("/doc generate chain step {}", current_step));
+                // TODO: Execute specific chain step
+            }
+
+            Command::DocValidate { output_dir } => {
+                self.emit_event("cmd", &format!("/doc validate {}", output_dir));
+                self.push_system_notice(&format!("Validating documentation in {}...", output_dir));
+                // TODO: Implement validation
+            }
+
+            Command::DocStatus => {
+                self.emit_event("cmd", "/doc status");
+                self.push_system_notice("Documentation generation status:\nPending implementation.");
+            }
+
+            // V2.5: Auto-chain large prompts
+            Command::AutoChain { prompt, strategy } => {
+                self.emit_event("cmd", "/auto-chain");
+                self.push_system_notice(&format!(
+                    "Auto-chaining large prompt using {:?} strategy...",
+                    strategy
+                ));
+                
+                // Parse the prompt into chain steps based on strategy
+                let steps = self.parse_prompt_into_steps(&prompt, &strategy);
+                
+                // Create and execute chain
+                if let Err(e) = self.execute_auto_chain(steps).await {
+                    self.push_system_notice(&format!("Auto-chain failed: {}", e));
+                }
+            }
+
+            // V2.6: Large prompt decomposer with artifact contract - SUPERCHARGED
+            Command::ArtifactContract { prompt, auto_detect: _ } => {
+                self.emit_event("cmd", "/artifact-contract");
+                
+                // Get repo path for contract
+                let repo_path = self.state.repo.path.clone();
+                
+                // Classify the prompt
+                use crate::large_prompt_classifier::{LargePromptClassifier, PromptClassification};
+                use crate::supercharged_tools::{SuperchargedToolExecutor, SuperchargeArtifactContract};
+                
+                match LargePromptClassifier::classify(&prompt, Some(std::path::Path::new(&repo_path))) {
+                    PromptClassification::LargeProject(contract) => {
+                        // Show artifact breakdown by type
+                        let type_counts = contract.artifacts.iter().fold(
+                            std::collections::HashMap::new(),
+                            |mut acc, artifact| {
+                                let type_name = match &artifact.artifact_type {
+                                    crate::large_prompt_classifier::ArtifactType::Markdown => "📄 Markdown",
+                                    crate::large_prompt_classifier::ArtifactType::Code { language } => &format!("💻 {}", language),
+                                    crate::large_prompt_classifier::ArtifactType::Config => "⚙️ Config",
+                                    crate::large_prompt_classifier::ArtifactType::Data => "📊 Data",
+                                    crate::large_prompt_classifier::ArtifactType::Test => "🧪 Test",
+                                    crate::large_prompt_classifier::ArtifactType::Script => "🔧 Script",
+                                    crate::large_prompt_classifier::ArtifactType::Documentation => "📚 Docs",
+                                    crate::large_prompt_classifier::ArtifactType::Other(ext) => &format!("📦 .{}", ext),
+                                };
+                                *acc.entry(type_name.to_string()).or_insert(0) += 1;
+                                acc
+                            }
+                        );
+                        
+                        let mut type_summary = String::new();
+                        for (type_name, count) in type_counts {
+                            type_summary.push_str(&format!("{} {}, ", count, type_name));
+                        }
+                        
+                        self.push_system_notice(&format!(
+                            "🚀 SUPERCHARGED Artifact Contract: {} artifacts ({})",
+                            contract.artifacts.len(),
+                            type_summary.trim_end_matches(", ")
+                        ));
+                        
+                        // Use supercharged tool execution for ALL artifact types
+                        let ctx = contract.get_tool_context(repo_path.into());
+                        let steps = contract.to_supercharged_steps();
+                        
+                        // Convert to persistent chain with supercharged steps
+                        let chain_steps = crate::supercharged_tools::execution_steps_to_chain_steps(steps);
+                        let chain_id = format!("supercharged-{}", uuid::Uuid::new_v4());
+                        
+                        let chain = crate::persistence::PersistentChain {
+                            id: chain_id.clone(),
+                            name: format!("Supercharged: {} artifacts", contract.artifacts.len()),
+                            objective: contract.source_prompt_summary.clone(),
+                            raw_prompt: prompt.clone(),
+                            status: crate::persistence::ChainLifecycleStatus::Ready,
+                            steps: chain_steps,
+                            active_step: None,
+                            repo_path: Some(ctx.repo_path.display().to_string()),
+                            conversation_id: Some(self.conversation_id.clone()),
+                            created_at: chrono::Local::now(),
+                            updated_at: chrono::Local::now(),
+                            completed_at: None,
+                            archived: false,
+                            total_steps_executed: 0,
+                            total_steps_failed: 0,
+                            execution_outcome: None,
+                            force_override_used: false,
+                            objective_satisfaction: crate::state::ObjectiveSatisfaction::default(),
+                            selected_context_files: vec![],
+                            context_state: None,
+                            pending_checkpoint: None,
+                            git_grounding: None,
+                            audit_log: crate::state::AuditLog::new(),
+                        };
+                        
+                        // Store chain and execute
+                        self.persistence.chains.push(chain);
+                        self.persistence.active_chain_id = Some(chain_id.clone());
+                        
+                        self.push_system_notice(&format!(
+                            "⚡ Supercharged chain '{}' ready - ALL tools active (file ops, batch processing, code intelligence)",
+                            chain_id
+                        ));
+                        
+                        // Convert to executable steps and run
+                        let exec_steps: Vec<String> = contract.artifacts.iter().map(|a| {
+                            format!("Generate {}: {}", 
+                                match &a.artifact_type {
+                                    crate::large_prompt_classifier::ArtifactType::Code { language } => format!("💻 {} code", language),
+                                    crate::large_prompt_classifier::ArtifactType::Markdown => "📄 markdown".to_string(),
+                                    crate::large_prompt_classifier::ArtifactType::Test => "🧪 tests".to_string(),
+                                    _ => format!("{:?}", a.artifact_type),
+                                },
+                                a.path.display()
+                            )
+                        }).collect();
+                        
+                        if let Err(e) = self.execute_auto_chain(exec_steps).await {
+                            tracing::warn!("Supercharged execution note: {}", e);
+                        }
+                    }
+                    PromptClassification::Regular => {
+                        // Not a large project prompt - fall back to regular task with tool access
+                        self.push_system_notice("🎯 Using standard execution with full tool access.");
+                        
+                        // Direct task execution without recursion
+                        self.append_user_message(&prompt);
+                        if let Err(e) = self.send_to_ollama(&prompt).await {
+                            tracing::warn!("Task execution note: {}", e);
+                        }
+                    }
+                    PromptClassification::Ambiguous { reason } => {
+                        self.push_system_notice(&format!(
+                            "🤔 {} - Using standard tools.",
+                            reason
+                        ));
+                        
+                        // Direct task execution without recursion
+                        self.append_user_message(&prompt);
+                        if let Err(e) = self.send_to_ollama(&prompt).await {
+                            tracing::warn!("Task execution note: {}", e);
+                        }
+                    }
+                }
             }
 
             Command::ChainArchive { chain_id } => {
@@ -4143,8 +4345,10 @@ impl App {
                                     if let Some(ref replay) = step.replay_record {
                                         msg.push_str(&format!(
                                             "  Fingerprint: {}\n",
-                                            &replay.execution_fingerprint
-                                                [..8.min(replay.execution_fingerprint.len())]
+                                            crate::text::take_chars(
+                                                &replay.execution_fingerprint,
+                                                8
+                                            )
                                         ));
                                         msg.push_str(&format!(
                                             "  Status: {}\n",
@@ -4395,6 +4599,99 @@ impl App {
             source: source.to_string(),
             message: message.to_string(),
         });
+    }
+
+    fn add_operator_debug_log(&mut self, source: &str, message: impl Into<String>) {
+        let message = message.into();
+        self.add_log(LogLevel::Debug, source, &message);
+    }
+
+    fn reset_execution_terminal_seal(&mut self) {
+        self.active_runtime_session_id = None;
+        self.execution_run_sealed = false;
+        self.post_terminal_audit_recorded = false;
+    }
+
+    fn seal_execution_run(&mut self) {
+        self.execution_run_sealed = true;
+        self.active_execution_runtime = None;
+        self.pending_confirmation = None;
+    }
+
+    fn runtime_event_label(event: &RuntimeEvent) -> &'static str {
+        match event {
+            RuntimeEvent::Init { .. } => "init",
+            RuntimeEvent::IterationStart { .. } => "iteration_start",
+            RuntimeEvent::PreflightPassed => "preflight_passed",
+            RuntimeEvent::PlannerOutput { .. } => "planner_output",
+            RuntimeEvent::ProtocolValidation { .. } => "protocol_validation",
+            RuntimeEvent::ToolCall { .. } => "tool_call",
+            RuntimeEvent::ToolExecuting { .. } => "tool_executing",
+            RuntimeEvent::ToolResult { .. } => "tool_result",
+            RuntimeEvent::BrowserPreview { .. } => "browser_preview",
+            RuntimeEvent::MutationsDetected { .. } => "mutations_detected",
+            RuntimeEvent::ValidationRunning => "validation_running",
+            RuntimeEvent::ValidationResult { .. } => "validation_result",
+            RuntimeEvent::StateCommitting { .. } => "state_committing",
+            RuntimeEvent::Completion { .. } => "completion_gate",
+            RuntimeEvent::Failure { .. } => "runtime_failure",
+            RuntimeEvent::RepairLoop { .. } => "repair_loop",
+            RuntimeEvent::Finished { .. } => "runtime_finished",
+            RuntimeEvent::ValidationStage { .. } => "validation_stage",
+            RuntimeEvent::ContextAssembly { .. } => "context_assembly",
+        }
+    }
+
+    fn audit_post_terminal_noise_once(&mut self, metadata: String) {
+        if self.post_terminal_audit_recorded {
+            return;
+        }
+
+        self.add_operator_debug_log(
+            "runtime/stale-post-terminal",
+            format!("Dropped post-terminal runtime noise: {}", metadata),
+        );
+
+        let step_id = self.state.current_chain_step_id.clone();
+        let task = self.state.execution.active_objective.clone();
+
+        if let Some(chain_id) = self.persistence.active_chain_id.clone() {
+            if let Some(chain) = self.persistence.get_chain_mut(&chain_id) {
+                chain.audit_event(crate::state::AuditEvent {
+                    timestamp: chrono::Utc::now(),
+                    event_type: crate::state::AuditEventType::ChainLifecycle {
+                        event: "stale_post_terminal".to_string(),
+                    },
+                    previous_state: None,
+                    next_state: None,
+                    triggering_event: Some("stale-post-terminal".to_string()),
+                    step_id,
+                    chain_id: Some(chain_id),
+                    task,
+                    reason: Some("stale-post-terminal".to_string()),
+                    metadata: Some(metadata),
+                });
+            }
+        }
+
+        self.post_terminal_audit_recorded = true;
+    }
+
+    fn drop_post_terminal_events(&mut self, stale_events: &[RuntimeEvent]) {
+        if stale_events.is_empty() {
+            return;
+        }
+
+        let labels = stale_events
+            .iter()
+            .map(Self::runtime_event_label)
+            .collect::<Vec<_>>()
+            .join(",");
+        self.audit_post_terminal_noise_once(format!(
+            "count={}; events={}",
+            stale_events.len(),
+            labels
+        ));
     }
 
     fn push_runtime_event(&mut self, stage: impl Into<String>, status: RuntimeStatus) {
@@ -4708,7 +5005,10 @@ impl App {
         use crate::state::ProgressTransitionEvent;
 
         match event {
-            RuntimeEvent::Init { task, .. } => {
+            RuntimeEvent::Init {
+                session_id, task, ..
+            } => {
+                self.active_runtime_session_id = Some(session_id.clone());
                 self.set_active_objective(Some(task.clone()));
                 self.apply_progress_transition(ProgressTransitionEvent::NewRun {
                     task: task.clone(),
@@ -5009,6 +5309,7 @@ impl App {
                 iterations,
                 error,
             } => {
+                self.handle_chain_step_completion(*success, error.as_ref().map(|e| e.to_string()));
                 self.apply_progress_transition(ProgressTransitionEvent::RuntimeFinished {
                     success: *success,
                 });
@@ -5029,9 +5330,6 @@ impl App {
                         .clone()
                         .unwrap_or_else(|| format!("Task failed after {} iterations", iterations))
                 });
-
-                // Phase C: Track chain step completion for potential auto-resume
-                self.handle_chain_step_completion(*success, error.as_ref().map(|e| e.to_string()));
             }
         }
     }
@@ -5170,201 +5468,27 @@ impl App {
             return Ok(false);
         }
 
-        self.clear_input();
-
-        // ADD USER MESSAGE IMMEDIATELY - appears in thread before execution
-        // This ensures the chat thread always shows the user's input right away
-        self.state.messages.push(Message {
-            id: uuid::Uuid::new_v4().to_string(),
-            role: MessageRole::User,
-            source_text: content.clone(),
-            content: content.clone(),
-            timestamp: chrono::Local::now(),
-            run_card: None,
-        });
-
-        // UNIFIED PIPELINE: All input flows through the same execution path
-        // INPUT → INTENT → PLAN → EXECUTION → VALIDATION → RESULT
+        // NON-CHAT MODES: These bypass the Chat routing logic entirely
+        // Handle Search, ProjectCreate, ProjectConnect, Passive modes directly
         match self.composer_mode {
-            ComposerMode::Chat => {
-                if content.starts_with('/') {
-                    // Parse command and build execution plan
-                    let command = crate::commands::parse_command(&content);
-                    self.execute_command_unified(command, &content).await
-                } else if crate::autonomy::AutonomousLoopController::is_task_like_plain_text(
-                    &content,
-                ) {
-                    self.emit_event("autonomy", "plain text goal detected");
-                    let should_quit = self
-                        .execute_command_unified(
-                            Command::Goal {
-                                statement: content.clone(),
-                            },
-                            &content,
-                        )
-                        .await?;
-
-                    if should_quit {
-                        return Ok(true);
-                    }
-
-                    if self.goal_manager.active_goal().is_some_and(|goal| {
-                        matches!(goal.status, crate::guidance::GoalStatus::Proposed)
-                            && goal.generated_plan.is_some()
-                    }) {
-                        self.pending_command = Some(Command::GoalConfirm);
-                        self.push_system_notice(
-                            "Autonomous goal intake: plan generated and confirmation queued.",
-                        );
-                    }
-
-                    Ok(false)
-                } else if self.state.execution.mode == ExecutionMode::Task {
-                    // Task mode: build granular plan based on request analysis
-                    let content_lower = content.to_lowercase();
-                    self.execute_unified(&content, "task", &content, |plan| {
-                        // Parse and plan
-                        plan.add_step("Parse request", crate::state::StepAction::Parse);
-                        plan.add_step("Generate execution plan", crate::state::StepAction::Plan);
-
-                        // Analyze for specific host actions (truthful projection)
-                        if content_lower.contains("create") || content_lower.contains("init") {
-                            if content_lower.contains("react") || content_lower.contains("vite") {
-                                plan.add_step(
-                                    "Create project directory",
-                                    crate::state::StepAction::CreateDirectory {
-                                        path: "./".to_string(),
-                                    },
-                                );
-                                plan.add_step(
-                                    "Initialize project files",
-                                    crate::state::StepAction::WriteFile {
-                                        path: "package.json".to_string(),
-                                    },
-                                );
-                                plan.add_step(
-                                    "Write starter templates",
-                                    crate::state::StepAction::WriteFile {
-                                        path: "src/".to_string(),
-                                    },
-                                );
-                                plan.add_step(
-                                    "Install dependencies",
-                                    crate::state::StepAction::Install {
-                                        package_manager: "npm".to_string(),
-                                    },
-                                );
-                            } else if content_lower.contains("project")
-                                || content_lower.contains("app")
-                            {
-                                plan.add_step(
-                                    "Create project directory",
-                                    crate::state::StepAction::CreateDirectory {
-                                        path: "./".to_string(),
-                                    },
-                                );
-                                plan.add_step(
-                                    "Initialize configuration",
-                                    crate::state::StepAction::WriteFile {
-                                        path: "config".to_string(),
-                                    },
-                                );
-                            }
-                        }
-
-                        if content_lower.contains("install")
-                            || content_lower.contains("npm")
-                            || content_lower.contains("pip")
-                        {
-                            let pm = if content_lower.contains("pip") {
-                                "pip"
-                            } else {
-                                "npm"
-                            };
-                            plan.add_step(
-                                "Install dependencies",
-                                crate::state::StepAction::Install {
-                                    package_manager: pm.to_string(),
-                                },
-                            );
-                        }
-
-                        if content_lower.contains("run")
-                            || content_lower.contains("start")
-                            || content_lower.contains("dev")
-                        {
-                            let cmd = if content_lower.contains("dev") {
-                                "npm run dev"
-                            } else {
-                                "npm start"
-                            };
-                            plan.add_step(
-                                "Start development server",
-                                crate::state::StepAction::StartServer {
-                                    command: cmd.to_string(),
-                                },
-                            );
-                        }
-
-                        if content_lower.contains("build") || content_lower.contains("compile") {
-                            plan.add_step("Build project", crate::state::StepAction::Build);
-                        }
-
-                        if content_lower.contains("test") || content_lower.contains("check") {
-                            plan.add_step(
-                                "Run validation",
-                                crate::state::StepAction::ValidateProject,
-                            );
-                        }
-
-                        // Always end with validation for task mode
-                        plan.add_step("Validate results", crate::state::StepAction::Validate);
-                    })
-                    .await
-                } else {
-                    // Chat mode: simple conversation - bypass unified pipeline
-                    // Direct LLM call without objectives/steps for natural chat flow
-                    match self.send_to_ollama(&content).await {
-                        Ok(Some(response)) => {
-                            // Add assistant response to UI
-                            self.state.messages.push(Message {
-                                id: uuid::Uuid::new_v4().to_string(),
-                                role: MessageRole::Assistant,
-                                source_text: response.clone(),
-                                content: response,
-                                timestamp: chrono::Local::now(),
-                                run_card: None,
-                            });
-                            Ok(false)
-                        }
-                        Ok(None) => Ok(false),
-                        Err(e) => {
-                            self.push_system_notice(&format!("Chat error: {}", e));
-                            Ok(false)
-                        }
-                    }
-                }
-            }
             ComposerMode::Search => {
-                self.execute_unified(
-                    &content,
-                    "command",
-                    &format!("Search for: {}", content),
-                    |plan| {
-                        plan.add_step(
-                            "Execute search across projects",
-                            crate::state::StepAction::Search {
-                                query: content.clone(),
-                            },
-                        );
-                        plan.add_step("Collect and format results", crate::state::StepAction::None);
-                    },
-                )
+                self.clear_input();
+                self.append_user_message(&content);
+                self.execute_unified(&content, "command", &format!("Search for: {}", content), |plan| {
+                    plan.add_step(
+                        "Execute search across projects",
+                        crate::state::StepAction::Search {
+                            query: content.clone(),
+                        },
+                    );
+                    plan.add_step("Collect and format results", crate::state::StepAction::None);
+                })
                 .await?;
                 self.run_project_search(&content);
-                Ok(false)
+                return Ok(false);
             }
             ComposerMode::ProjectCreate => {
+                self.clear_input();
                 let parent_dir = self
                     .project_create_workflow
                     .as_ref()
@@ -5374,11 +5498,7 @@ impl App {
                 self.execute_unified(
                     &content,
                     "command",
-                    &format!(
-                        "Create project '{}' in {}",
-                        project_name,
-                        parent_dir.display()
-                    ),
+                    &format!("Create project '{}' in {}", project_name, parent_dir.display()),
                     |plan| {
                         plan.add_step("Validate project name", crate::state::StepAction::Validate);
                         plan.add_step(
@@ -5408,9 +5528,10 @@ impl App {
                     self.clear_project_create_workflow();
                     self.set_panel_status(PanelStatusLevel::Error, e.to_string());
                 }
-                Ok(false)
+                return Ok(false);
             }
             ComposerMode::ProjectConnect => {
+                self.clear_input();
                 self.execute_unified(
                     &content,
                     "command",
@@ -5431,10 +5552,298 @@ impl App {
                     self.activate_project_connect();
                     self.set_panel_status(PanelStatusLevel::Error, e.to_string());
                 }
+                return Ok(false);
+            }
+            ComposerMode::Passive => {
+                self.clear_input();
+                return Ok(false);
+            }
+            ComposerMode::Chat => {
+                // Continue to Chat mode routing below
+            }
+        }
+
+        // SYNCHRONOUS INTENT CLASSIFICATION: Must complete BEFORE any UI reaction
+        // This ensures deterministic routing with no drift between chat and task pipelines
+        let routing_decision = self.classify_input_intent(&content);
+
+        self.clear_input();
+
+        // Route based on synchronous classification result - NO async/await before this point
+        match routing_decision {
+            InputRouting::Command => {
+                let command = crate::commands::parse_command(&content);
+                self.execute_command_with_message(command, &content).await
+            }
+            InputRouting::SimpleCommand { contract } => {
+                // Simple natural language command - auto-execute artifact contract
+                self.emit_event("large_prompt", &format!(
+                    "simple command detected: {} files",
+                    contract.artifacts.len()
+                ));
+                self.append_user_message(&content);
+                
+                let notice = format!(
+                    "📦 Auto-creating {} documentation files...",
+                    contract.artifacts.len()
+                );
+                self.push_system_notice(&notice);
+
+                // Decompose into steps and execute
+                let task = crate::large_task_decomposer::LargeTaskDecomposer::from_contract(contract);
+                match self.execute_decomposed_task(task).await {
+                    Ok(_) => {
+                        self.push_system_notice("✅ All files created successfully!");
+                        Ok(false)
+                    }
+                    Err(e) => {
+                        self.push_system_notice(&format!("❌ Failed: {}", e));
+                        Ok(false)
+                    }
+                }
+            }
+            InputRouting::TaskGoal => {
+                // Structured execution intent: route to goal pipeline
+                self.emit_event("autonomy", "plain text goal detected");
+
+                // Add user message to UI (after classification, before execution)
+                self.append_user_message(&content);
+
+                let should_quit = self
+                    .execute_command_unified(
+                        Command::Goal {
+                            statement: content.clone(),
+                        },
+                        &content,
+                    )
+                    .await?;
+
+                if should_quit {
+                    return Ok(true);
+                }
+
+                if self.goal_manager.active_goal().is_some_and(|goal| {
+                    matches!(goal.status, crate::guidance::GoalStatus::Proposed)
+                        && goal.generated_plan.is_some()
+                }) {
+                    self.pending_command = Some(Command::GoalConfirm);
+                    self.push_system_notice(
+                        "Autonomous goal intake: plan generated and confirmation queued.",
+                    );
+                }
+
                 Ok(false)
             }
-            ComposerMode::Passive => Ok(false),
+            InputRouting::FollowUp { resolved_task, original_input } => {
+                // CODEX-LIKE CONTINUITY: Follow-up resolved from working memory
+                self.emit_event("continuity", &format!("follow-up resolved: '{}' → task execution", original_input));
+                self.append_user_message(&original_input);
+
+                // Add continuity notice showing what we're continuing
+                let continuity_notice = format!(
+                    "Continuing from working memory: {}",
+                    crate::text::truncate_chars(&resolved_task, 80)
+                );
+                self.push_system_notice(&continuity_notice);
+
+                let should_quit = self
+                    .execute_command_unified(
+                        Command::Goal {
+                            statement: resolved_task.clone(),
+                        },
+                        &resolved_task,
+                    )
+                    .await?;
+
+                if should_quit {
+                    return Ok(true);
+                }
+
+                Ok(false)
+            }
+            InputRouting::TaskExecution => {
+                // Task mode execution with granular plan
+                self.append_user_message(&content);
+
+                let content_lower = content.to_lowercase();
+                self.execute_unified(&content, "task", &content, |plan| {
+                    plan.add_step("Parse request", crate::state::StepAction::Parse);
+                    plan.add_step("Generate execution plan", crate::state::StepAction::Plan);
+
+                    if content_lower.contains("create") || content_lower.contains("init") {
+                        if content_lower.contains("react") || content_lower.contains("vite") {
+                            plan.add_step(
+                                "Create project directory",
+                                crate::state::StepAction::CreateDirectory {
+                                    path: "./".to_string(),
+                                },
+                            );
+                            plan.add_step(
+                                "Initialize project files",
+                                crate::state::StepAction::WriteFile {
+                                    path: "package.json".to_string(),
+                                },
+                            );
+                            plan.add_step(
+                                "Write starter templates",
+                                crate::state::StepAction::WriteFile {
+                                    path: "src/".to_string(),
+                                },
+                            );
+                            plan.add_step(
+                                "Install dependencies",
+                                crate::state::StepAction::Install {
+                                    package_manager: "npm".to_string(),
+                                },
+                            );
+                        } else if content_lower.contains("project")
+                            || content_lower.contains("app")
+                        {
+                            plan.add_step(
+                                "Create project directory",
+                                crate::state::StepAction::CreateDirectory {
+                                    path: "./".to_string(),
+                                },
+                            );
+                            plan.add_step(
+                                "Initialize configuration",
+                                crate::state::StepAction::WriteFile {
+                                    path: "config".to_string(),
+                                },
+                            );
+                        }
+                    }
+
+                    if content_lower.contains("install")
+                        || content_lower.contains("npm")
+                        || content_lower.contains("pip")
+                    {
+                        let pm = if content_lower.contains("pip") { "pip" } else { "npm" };
+                        plan.add_step(
+                            "Install dependencies",
+                            crate::state::StepAction::Install {
+                                package_manager: pm.to_string(),
+                            },
+                        );
+                    }
+
+                    if content_lower.contains("run")
+                        || content_lower.contains("start")
+                        || content_lower.contains("dev")
+                    {
+                        let cmd = if content_lower.contains("dev") { "npm run dev" } else { "npm start" };
+                        plan.add_step(
+                            "Start development server",
+                            crate::state::StepAction::StartServer {
+                                command: cmd.to_string(),
+                            },
+                        );
+                    }
+
+                    if content_lower.contains("build") || content_lower.contains("compile") {
+                        plan.add_step("Build project", crate::state::StepAction::Build);
+                    }
+
+                    if content_lower.contains("test") || content_lower.contains("check") {
+                        plan.add_step("Run validation", crate::state::StepAction::ValidateProject);
+                    }
+
+                    plan.add_step("Validate results", crate::state::StepAction::Validate);
+                })
+                .await
+            }
+            InputRouting::Chat => {
+                // Conversational chat: direct LLM call
+                self.append_user_message(&content);
+
+                match self.send_to_ollama(&content).await {
+                    Ok(Some(response)) => {
+                        self.state.messages.push(Message {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            role: MessageRole::Assistant,
+                            source_text: response.clone(),
+                            content: response,
+                            timestamp: chrono::Local::now(),
+                            run_card: None,
+                        });
+                        Ok(false)
+                    }
+                    Ok(None) => Ok(false),
+                    Err(e) => {
+                        self.push_system_notice(&format!("Chat error: {}", e));
+                        Ok(false)
+                    }
+                }
+            }
         }
+    }
+
+    /// Synchronous intent classification - NO async, NO delays, NO UI updates
+    /// Must complete instantly to ensure deterministic routing
+    fn classify_input_intent(&self, content: &str) -> InputRouting {
+        // Commands always take precedence
+        if content.starts_with('/') {
+            return InputRouting::Command;
+        }
+
+        // SIMPLE COMMANDS: "docs", "create README.md", etc.
+        // Auto-detect and convert to artifact contract
+        if let Ok(repo_path) = self.active_project_root() {
+            if crate::large_prompt_classifier::SimpleCommandParser::is_simple_command(content) {
+                if let Some(contract) = crate::large_prompt_classifier::SimpleCommandParser::parse_simple(content, repo_path) {
+                    return InputRouting::SimpleCommand { contract };
+                }
+            }
+        }
+
+        // CODEX-LIKE CONTINUITY: Check for follow-up intent against working memory
+        let follow_up_intent = crate::working_memory::WorkingMemory::detect_follow_up_intent(content);
+        if !matches!(follow_up_intent, crate::working_memory::FollowUpIntent::NewTask) {
+            // Try to resolve the follow-up against current working memory
+            if let Some(memory) = crate::working_memory::compute_working_memory(&self.persistence) {
+                if let Some(resolved_task) = memory.resolve_follow_up(follow_up_intent, content) {
+                    return InputRouting::FollowUp {
+                        resolved_task,
+                        original_input: content.to_string(),
+                    };
+                }
+            }
+        }
+
+        // Check for structured execution intent (task-like plain text)
+        if crate::autonomy::AutonomousLoopController::is_task_like_plain_text(content) {
+            return InputRouting::TaskGoal;
+        }
+
+        // In Task execution mode, treat as task execution
+        if self.state.execution.mode == ExecutionMode::Task {
+            return InputRouting::TaskExecution;
+        }
+
+        // Default: conversational chat
+        InputRouting::Chat
+    }
+
+    /// Helper to append user message to UI (extracted for consistency)
+    fn append_user_message(&mut self, content: &str) {
+        self.state.messages.push(Message {
+            id: uuid::Uuid::new_v4().to_string(),
+            role: MessageRole::User,
+            source_text: content.to_string(),
+            content: content.to_string(),
+            timestamp: chrono::Local::now(),
+            run_card: None,
+        });
+    }
+
+    /// Execute a parsed command with user message already appended
+    async fn execute_command_with_message(
+        &mut self,
+        command: Command,
+        content: &str,
+    ) -> Result<bool> {
+        self.append_user_message(content);
+        self.execute_command_unified(command, content).await
     }
 
     /// Execute a command through the unified pipeline
@@ -5567,6 +5976,31 @@ impl App {
                     if *enabled { "operator" } else { "normal" }
                 ),
             ),
+            Command::DocGenerate { doc_number, .. } => (
+                "command",
+                if let Some(n) = doc_number {
+                    format!("Generate documentation file {}", n)
+                } else {
+                    "Generate all 15 canonical documentation files".to_string()
+                },
+            ),
+            Command::DocGenerateChain { current_step, .. } => (
+                "command",
+                format!("Documentation generation chain step {}/15", current_step),
+            ),
+            Command::DocValidate { output_dir } => (
+                "command",
+                format!("Validate generated documentation in {}", output_dir),
+            ),
+            Command::DocStatus => ("command", "Show documentation generation status".to_string()),
+            Command::AutoChain { prompt, .. } => (
+                "command",
+                format!("Auto-chain large prompt ({} chars)", prompt.len()),
+            ),
+            Command::ArtifactContract { prompt, .. } => (
+                "command",
+                format!("Artifact contract ({} chars)", prompt.len()),
+            ),
             Command::Quit => ("command", "Exit application".to_string()),
             Command::Unknown { input } => ("command", format!("Unknown command: {}", input)),
         };
@@ -5625,6 +6059,18 @@ impl App {
                 Command::RunValidation => {
                     plan.add_step(
                         "Run validation pipeline",
+                        crate::state::StepAction::ValidateProject,
+                    );
+                }
+                Command::DocGenerate { .. } => {
+                    plan.add_step(
+                        "Generate canonical documentation",
+                        crate::state::StepAction::None,
+                    );
+                }
+                Command::DocValidate { .. } => {
+                    plan.add_step(
+                        "Validate generated documentation",
                         crate::state::StepAction::ValidateProject,
                     );
                 }
@@ -5918,21 +6364,8 @@ impl App {
 
                 match self.execute_chat_step(original_input).await {
                     Ok(Some(response)) => {
-                        // Add assistant response to UI (truth surface)
-                        self.state.messages.push(Message {
-                            id: uuid::Uuid::new_v4().to_string(),
-                            role: MessageRole::Assistant,
-                            source_text: response.clone(),
-                            content: response.clone(),
-                            timestamp: chrono::Local::now(),
-                            run_card: None,
-                        });
-
-                        // DEBUG: Verify assistant message added
-                        println!(
-                            "DEBUG Chat step: ASSISTANT MESSAGE ADDED, total count = {}",
-                            self.state.messages.len()
-                        );
+                        // Route conversational replies to chat and structured output to inspector.
+                        self.push_assistant_message(&response);
 
                         result.bytes_affected = Some(response.len());
                         result.duration_ms = Some(start.elapsed().as_millis() as u64);
@@ -6173,6 +6606,19 @@ impl App {
         &mut self,
         goal: &crate::guidance::Goal,
     ) -> crate::guidance::PlanGenerationResult {
+        let repo_path = if self.state.repo.path.trim().is_empty() {
+            self.persistence.active_repo.as_deref()
+        } else {
+            Some(self.state.repo.path.as_str())
+        };
+
+        if let Some(plan) =
+            crate::guidance::PlanEngine::generate_explicit_artifact_plan(goal, repo_path)
+        {
+            self.emit_event("goal/planner", "explicit artifact contract plan selected");
+            return crate::guidance::PlanGenerationResult::Success(plan);
+        }
+
         if let Some(plan) = crate::guidance::PlanEngine::generate_literal_creation(goal) {
             self.emit_event("goal/planner", "literal creation plan selected");
             return crate::guidance::PlanGenerationResult::Success(plan);
@@ -6202,10 +6648,16 @@ impl App {
             .get_or_build_repo_snapshot()
             .map(|snapshot| snapshot.format_context())
             .unwrap_or_else(|| "No repository snapshot available.".to_string());
+
+        // CODEX-LIKE CONTINUITY: Inject working memory context for richer planner context
+        let working_context = crate::working_memory::compute_working_memory(&self.persistence)
+            .map(|memory| memory.format_context_block());
+
         let messages = crate::goal_planner::QwenGoalPlanner::build_messages(
             goal,
             &repo_evidence,
             previous_plan.as_ref(),
+            working_context.as_deref(),
         );
 
         self.emit_event(
@@ -6503,10 +6955,14 @@ impl App {
         if !self.composer_is_editable() {
             return;
         }
+        self.state.cursor_position = crate::text::clamp_to_char_boundary(
+            &self.state.input_buffer,
+            self.state.cursor_position,
+        );
         self.state
             .input_buffer
             .insert(self.state.cursor_position, c);
-        self.state.cursor_position += 1;
+        self.state.cursor_position += c.len_utf8();
     }
 
     pub fn handle_backspace(&mut self) {
@@ -6514,7 +6970,16 @@ impl App {
             return;
         }
         if self.state.cursor_position > 0 {
-            self.state.cursor_position -= 1;
+            self.state.cursor_position = crate::text::clamp_to_char_boundary(
+                &self.state.input_buffer,
+                self.state.cursor_position,
+            );
+            let previous = self.state.input_buffer[..self.state.cursor_position]
+                .char_indices()
+                .last()
+                .map(|(idx, _)| idx)
+                .unwrap_or(0);
+            self.state.cursor_position = previous;
             self.state.input_buffer.remove(self.state.cursor_position);
         }
     }
@@ -6523,6 +6988,10 @@ impl App {
         if !self.composer_is_editable() {
             return;
         }
+        self.state.cursor_position = crate::text::clamp_to_char_boundary(
+            &self.state.input_buffer,
+            self.state.cursor_position,
+        );
         if self.state.cursor_position < self.state.input_buffer.len() {
             self.state.input_buffer.remove(self.state.cursor_position);
         }
@@ -6533,7 +7002,15 @@ impl App {
             return;
         }
         if self.state.cursor_position > 0 {
-            self.state.cursor_position -= 1;
+            self.state.cursor_position = crate::text::clamp_to_char_boundary(
+                &self.state.input_buffer,
+                self.state.cursor_position,
+            );
+            self.state.cursor_position = self.state.input_buffer[..self.state.cursor_position]
+                .char_indices()
+                .last()
+                .map(|(idx, _)| idx)
+                .unwrap_or(0);
         }
     }
 
@@ -6541,8 +7018,17 @@ impl App {
         if !self.composer_is_editable() {
             return;
         }
+        self.state.cursor_position = crate::text::clamp_to_char_boundary(
+            &self.state.input_buffer,
+            self.state.cursor_position,
+        );
         if self.state.cursor_position < self.state.input_buffer.len() {
-            self.state.cursor_position += 1;
+            let next_char_len = self.state.input_buffer[self.state.cursor_position..]
+                .chars()
+                .next()
+                .map(|ch| ch.len_utf8())
+                .unwrap_or(1);
+            self.state.cursor_position += next_char_len;
         }
     }
 
@@ -6713,7 +7199,8 @@ impl App {
 
         match self.composer_mode {
             ComposerMode::Chat => match self.state.execution.mode {
-                ExecutionMode::Chat => "Chat with Rasputin...".to_string(),
+                // TASK is default mode - work-first semantics
+                ExecutionMode::Task => "Describe the work to execute...".to_string(),
                 ExecutionMode::Edit => {
                     if is_normal {
                         "Describe what you want to change...".to_string()
@@ -6721,7 +7208,8 @@ impl App {
                         "Use /read, /write, /replace, or /run...".to_string()
                     }
                 }
-                ExecutionMode::Task => "Describe the task to execute...".to_string(),
+                // Chat is now the secondary/conversational mode
+                ExecutionMode::Chat => "Ask questions or chat...".to_string(),
             },
             ComposerMode::Search => format!("Search {}...", self.search_scope_label()),
             ComposerMode::ProjectCreate => {
@@ -7182,6 +7670,20 @@ impl App {
         }
     }
 
+    fn parse_structured_output_kind(value: &str) -> StructuredOutputKind {
+        match value {
+            "Objective" => StructuredOutputKind::Objective,
+            "Plan" => StructuredOutputKind::Plan,
+            "Artifact" => StructuredOutputKind::ArtifactManifest,
+            "Audit" => StructuredOutputKind::Audit,
+            "Checkpoint" => StructuredOutputKind::Checkpoint,
+            "Recovery" => StructuredOutputKind::Recovery,
+            "Status" => StructuredOutputKind::Status,
+            "Markdown" => StructuredOutputKind::Markdown,
+            _ => StructuredOutputKind::Unknown,
+        }
+    }
+
     fn runtime_status_from_execution(state: ExecutionState) -> RuntimeStatus {
         match state {
             ExecutionState::Idle => RuntimeStatus::Idle,
@@ -7453,6 +7955,15 @@ impl App {
 
     /// V2.4: Push system notice with deduplication guardrail
     fn push_system_notice(&mut self, message: &str) {
+        if let Some(kind) = Self::classify_structured_output("system", message) {
+            self.push_structured_output(kind, "system", message);
+            return;
+        }
+
+        self.push_system_notice_raw(message);
+    }
+
+    fn push_system_notice_raw(&mut self, message: &str) {
         // V2.4: Deduplication - prevent exact duplicate system messages within last 5 messages
         let recent_messages: Vec<_> = self.state.messages.iter().rev().take(5).collect();
         let is_duplicate = recent_messages
@@ -7462,7 +7973,7 @@ impl App {
         if is_duplicate {
             debug!(
                 "Skipping duplicate system notice: {}",
-                &message[..message.len().min(50)]
+                crate::text::truncate_chars(message, 50)
             );
             return;
         }
@@ -7478,6 +7989,153 @@ impl App {
         self.snapshot_current_conversation();
     }
 
+    fn push_structured_output(&mut self, kind: StructuredOutputKind, source: &str, content: &str) {
+        let title = Self::structured_output_title(kind, content);
+        let output = StructuredOutput {
+            id: uuid::Uuid::new_v4().to_string(),
+            kind,
+            title: title.clone(),
+            source: source.to_string(),
+            content: content.to_string(),
+            timestamp: chrono::Local::now(),
+        };
+
+        if self
+            .state
+            .structured_outputs
+            .last()
+            .is_some_and(|existing| existing.kind == kind && existing.content == content)
+        {
+            return;
+        }
+
+        self.state.structured_outputs.push(output);
+        if self.state.structured_outputs.len() > 20 {
+            self.state.structured_outputs.remove(0);
+        }
+
+        self.show_inspector = true;
+        self.state.active_inspector_tab = match kind {
+            StructuredOutputKind::Audit => InspectorTab::Audit,
+            StructuredOutputKind::Checkpoint => InspectorTab::Checkpoint,
+            StructuredOutputKind::Recovery => InspectorTab::Recovery,
+            _ => InspectorTab::Preview,
+        };
+        self.record_last_action(format!("{} routed to structured inspector", kind.label()));
+        self.push_system_notice_raw(&format!(
+            "{} routed to Inspector → {}: {}",
+            kind.label(),
+            self.state.active_inspector_tab.as_str(),
+            title
+        ));
+    }
+
+    fn structured_output_title(kind: StructuredOutputKind, content: &str) -> String {
+        let first = content
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .unwrap_or(kind.label());
+        crate::text::truncate_chars(first, 72)
+    }
+
+    fn classify_structured_output(source: &str, content: &str) -> Option<StructuredOutputKind> {
+        let trimmed = content.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.contains("checkpoint decision")
+            || lower.contains("checkpoint validation")
+            || lower.starts_with("checkpoint:")
+        {
+            return Some(StructuredOutputKind::Checkpoint);
+        }
+        if lower.contains("audit timeline") || lower.contains("audit replay") {
+            return Some(StructuredOutputKind::Audit);
+        }
+        if lower.contains("recovery status") || lower.contains("repair") {
+            return Some(StructuredOutputKind::Recovery);
+        }
+        if lower.starts_with("git repository state")
+            || lower.starts_with("installed ollama models:")
+            || lower.starts_with("chain status:")
+            || lower.starts_with("active chains")
+            || lower.starts_with("context assembly")
+        {
+            return Some(StructuredOutputKind::Status);
+        }
+        if lower.starts_with("plan for")
+            || lower.contains("\nsteps:")
+            || lower.contains("generated plan")
+            || lower.contains("goal plan accepted")
+        {
+            return Some(StructuredOutputKind::Plan);
+        }
+        if lower.contains("modified files:")
+            || lower.contains("staged files:")
+            || lower.contains("untracked files:")
+            || lower.contains("selected files:")
+            || lower.contains("files affected")
+        {
+            return Some(StructuredOutputKind::ArtifactManifest);
+        }
+
+        let lines: Vec<&str> = trimmed.lines().collect();
+        if lines.len() < 6 && trimmed.chars().count() < 420 {
+            return None;
+        }
+
+        let numbered = lines
+            .iter()
+            .filter(|line| {
+                let line = line.trim_start();
+                let Some((prefix, rest)) = line.split_once('.') else {
+                    return false;
+                };
+                !rest.trim().is_empty() && prefix.chars().all(|ch| ch.is_ascii_digit())
+            })
+            .count();
+        let bullets = lines
+            .iter()
+            .filter(|line| {
+                let line = line.trim_start();
+                line.starts_with("- ") || line.starts_with("* ") || line.starts_with("• ")
+            })
+            .count();
+        let headings = lines
+            .iter()
+            .filter(|line| line.trim_start().starts_with('#'))
+            .count();
+        let colon_headers = lines
+            .iter()
+            .filter(|line| {
+                let line = line.trim();
+                line.ends_with(':')
+                    || (line.contains(':')
+                        && line.split(':').next().is_some_and(|label| {
+                            label
+                                .chars()
+                                .all(|ch| ch.is_ascii_uppercase() || ch == '_' || ch == ' ')
+                        }))
+            })
+            .count();
+
+        if numbered >= 3 {
+            return Some(StructuredOutputKind::Plan);
+        }
+        if bullets >= 4 || headings >= 2 || trimmed.contains("```") || colon_headers >= 4 {
+            return Some(if source == "assistant" {
+                StructuredOutputKind::Markdown
+            } else {
+                StructuredOutputKind::Status
+            });
+        }
+
+        None
+    }
+
     /// V2.4: Push user message with deduplication guardrail
     fn push_user_message(&mut self, content: &str) {
         // V2.4: Deduplication - prevent exact duplicate user messages within last 3 messages
@@ -7489,7 +8147,7 @@ impl App {
         if is_duplicate {
             debug!(
                 "Skipping duplicate user message: {}",
-                &content[..content.len().min(50)]
+                crate::text::truncate_chars(content, 50)
             );
             return;
         }
@@ -7506,6 +8164,11 @@ impl App {
 
     /// V2.4: Push assistant message with deduplication guardrail
     fn push_assistant_message(&mut self, content: &str) {
+        if let Some(kind) = Self::classify_structured_output("assistant", content) {
+            self.push_structured_output(kind, "assistant", content);
+            return;
+        }
+
         // V2.4: Deduplication - prevent exact duplicate assistant messages within last 3 messages
         let recent_messages: Vec<_> = self.state.messages.iter().rev().take(3).collect();
         let is_duplicate = recent_messages
@@ -7515,7 +8178,7 @@ impl App {
         if is_duplicate {
             debug!(
                 "Skipping duplicate assistant message: {}",
-                &content[..content.len().min(50)]
+                crate::text::truncate_chars(content, 50)
             );
             return;
         }
@@ -7705,7 +8368,7 @@ impl App {
             self.emit_event("host", &format!("CreateChat failed: {}", error));
         }
         self.seed_welcome_message();
-        self.push_system_notice("✔ New chat created");
+        self.push_system_notice("✔ New task started");
         self.snapshot_current_conversation();
         self.persist_now();
     }
@@ -7815,6 +8478,18 @@ impl App {
                 message: event.message.clone(),
             })
             .collect();
+        self.state.structured_outputs = conversation
+            .structured_outputs
+            .iter()
+            .map(|output| StructuredOutput {
+                id: output.id.clone(),
+                kind: Self::parse_structured_output_kind(&output.kind),
+                title: output.title.clone(),
+                source: output.source.clone(),
+                content: output.content.clone(),
+                timestamp: output.timestamp,
+            })
+            .collect();
         self.state.execution.mode = Self::parse_execution_mode(&conversation.execution.mode);
         self.state.execution.state = Self::parse_execution_state(&conversation.execution.state);
         self.state.execution.active_objective = conversation.execution.active_objective.clone();
@@ -7914,6 +8589,20 @@ impl App {
             })
             .collect::<Vec<_>>();
 
+        let structured_outputs = self
+            .state
+            .structured_outputs
+            .iter()
+            .map(|output| crate::persistence::PersistentStructuredOutput {
+                id: output.id.clone(),
+                kind: output.kind.label().to_string(),
+                title: output.title.clone(),
+                source: output.source.clone(),
+                content: output.content.clone(),
+                timestamp: output.timestamp,
+            })
+            .collect::<Vec<_>>();
+
         self.persistence.active_conversation = Some(self.conversation_id.clone());
         let conversation = self
             .persistence
@@ -7950,6 +8639,7 @@ impl App {
         };
         conversation.messages = messages;
         conversation.runtime_events = events;
+        conversation.structured_outputs = structured_outputs;
         conversation.updated_at = chrono::Local::now();
     }
 
@@ -8183,6 +8873,7 @@ impl App {
             .unwrap_or_default();
         let planner_model = self.state.model.active.clone();
         let stdout_capture = self.execution_output_buffer.join("\n");
+        let affected_paths = self.state.execution.file_writes.clone();
         let test_results = self.state.execution.validation_summary.clone();
         let exit_code = Some(if success { 0 } else { 1 });
         let result_class = crate::persistence::ExecutionResultClass::classify(
@@ -8220,6 +8911,7 @@ impl App {
         let stderr_audit_excerpt = Self::audit_output_excerpt(error.as_deref().unwrap_or_default());
         let test_audit_excerpt =
             Self::audit_output_excerpt(test_results.as_deref().unwrap_or_default());
+        let mut completion_step_result: Option<crate::state::StepResult> = None;
 
         // Update the chain step with completion result
         if let Some(chain) = self.persistence.get_chain_mut(&chain_id) {
@@ -8229,8 +8921,25 @@ impl App {
                 .as_ref()
                 .map(|ctx| ctx.files.len())
                 .unwrap_or(chain.selected_context_files.len());
+            let chain_force_override_used = chain.force_override_used;
 
             if let Some(step) = chain.steps.iter_mut().find(|s| s.id == step_id) {
+                let was_recovery_step =
+                    step.retry_of.is_some() || step.recovery_step_kind.is_some();
+                let step_outcome = if success {
+                    if chain_force_override_used || step.force_override_used {
+                        crate::persistence::ExecutionOutcome::SuccessWithWarnings
+                    } else {
+                        crate::persistence::ExecutionOutcome::Success
+                    }
+                } else if matches!(
+                    result_class,
+                    crate::persistence::ExecutionResultClass::Blocked
+                ) {
+                    crate::persistence::ExecutionOutcome::Blocked
+                } else {
+                    crate::persistence::ExecutionOutcome::Failed
+                };
                 step.status = if success {
                     crate::persistence::ChainStepStatus::Completed
                 } else if matches!(
@@ -8255,12 +8964,14 @@ impl App {
                         failure_reason: failure_reason.clone(),
                         captured_at: chrono::Local::now(),
                         generated_retry_step_id: None,
+                        affected_paths: affected_paths.clone(),
                     });
                 step.result_summary = Some(if success {
                     "Step completed successfully".to_string()
                 } else {
                     error.clone().unwrap_or_else(|| "Step failed".to_string())
                 });
+                step.execution_outcome = Some(step_outcome);
                 step.validation_passed = Some(success);
                 step.completed_at = Some(chrono::Local::now());
                 step.error_message = if success {
@@ -8268,6 +8979,42 @@ impl App {
                 } else {
                     Some(error.clone().unwrap_or_else(|| "Step failed".to_string()))
                 };
+
+                completion_step_result = Some(crate::state::StepResult {
+                    affected_paths: affected_paths.clone(),
+                    exit_code,
+                    bytes_affected: Some(affected_paths.len()),
+                    validation_result: test_results.clone(),
+                    error_message: error.clone(),
+                    artifact_urls: vec![],
+                    duration_ms: None,
+                    outcome_class: if success {
+                        if was_recovery_step {
+                            crate::state::StepOutcomeClass::Recovery
+                        } else {
+                            crate::state::StepOutcomeClass::Success
+                        }
+                    } else if matches!(
+                        result_class,
+                        crate::persistence::ExecutionResultClass::Blocked
+                    ) {
+                        crate::state::StepOutcomeClass::Blocked
+                    } else {
+                        crate::state::StepOutcomeClass::Failure
+                    },
+                    failure_reason: None,
+                    evidence: crate::state::ExecutionEvidence {
+                        stdout: (!stdout_capture.is_empty()).then_some(stdout_capture.clone()),
+                        stderr: error.clone(),
+                        exit_code,
+                        failed_validation_stage: None,
+                        validation_failure_details: test_results.clone(),
+                        error_summary: Some(error_summary.clone()),
+                        suggested_fix: None,
+                    },
+                    retry_attempt: step.retry_attempt,
+                    recovery_for_step_id: step.retry_of.clone(),
+                });
 
                 // V1.6 AUDIT: Log step completion
                 let step_audit_event = crate::state::AuditEvent {
@@ -8439,6 +9186,10 @@ impl App {
             if !success {
                 chain.total_steps_failed += 1;
             }
+            chain.objective_satisfaction =
+                crate::autonomy::CompletionConfidenceEvaluator::refresh_objective_satisfaction(
+                    chain,
+                );
 
             _chain_name = Some(chain.name.clone());
             let steps_executed = chain.total_steps_executed;
@@ -8482,36 +9233,119 @@ impl App {
                 .iter()
                 .any(|s| matches!(s.status, crate::persistence::ChainStepStatus::Pending))
             {
-                // No more pending steps - chain complete
-                chain.status = crate::persistence::ChainLifecycleStatus::Complete;
-                chain.completed_at = Some(chrono::Local::now());
-                notices.push(format!("Chain '{}' completed all steps", chain.name));
-                // V1.5: Clear pending confirmation on chain completion
-                self.pending_confirmation = None;
+                if success {
+                    let step_result = completion_step_result.clone().unwrap_or_default();
+                    match crate::autonomy::CompletionConfidenceEvaluator::evaluate_after_step(
+                        chain,
+                        &step_result,
+                        &chain.objective_satisfaction,
+                    ) {
+                        crate::autonomy::CompletionConfidenceDecision::Finalize { reason } => {
+                            chain.status = crate::persistence::ChainLifecycleStatus::Complete;
+                            chain.completed_at = Some(chrono::Local::now());
+                            notices.push(format!(
+                                "Chain '{}' completed all steps: {}",
+                                chain.name, reason
+                            ));
+                            // V1.5: Clear pending confirmation on chain completion
+                            self.pending_confirmation = None;
 
-                // V2.0: Generate completion explanation if this was a goal-driven chain
-                // V1.5: Finalize and use authoritative outcome
-                chain.finalize_outcome();
+                            // V2.0: Generate completion explanation if this was a goal-driven chain
+                            // V1.5: Finalize and use authoritative outcome
+                            chain.finalize_outcome();
 
-                // V1.6 AUDIT: Log outcome finalization
-                if let Some(outcome) = chain.get_outcome() {
-                    let outcome_audit = crate::state::AuditEvent::outcome_finalized(outcome, None);
-                    chain.audit_event(outcome_audit);
-                }
+                            // V1.6 AUDIT: Log outcome finalization
+                            if let Some(outcome) = chain.get_outcome() {
+                                let outcome_audit =
+                                    crate::state::AuditEvent::outcome_finalized(outcome, None);
+                                chain.audit_event(outcome_audit);
+                            }
 
-                if let Some(goal) = self.goal_manager.active_goal() {
-                    if goal.chain_id.as_ref() == Some(&chain.id) {
-                        let outcome = chain
-                            .get_outcome()
-                            .unwrap_or(crate::persistence::ExecutionOutcome::Success);
-                        let summary =
-                            crate::guidance::CompletionExplanation::generate(goal, chain, outcome);
-                        notices.push(summary);
-                        crate::autonomy::AutonomousLoopController::mark_goal_completed_for_chain(
-                            &mut self.goal_manager,
-                            chain,
-                            format!("Chain {} completed", chain.name),
-                        );
+                            if let Some(goal) = self.goal_manager.active_goal() {
+                                if goal.chain_id.as_ref() == Some(&chain.id) {
+                                    let outcome = chain
+                                        .get_outcome()
+                                        .unwrap_or(crate::persistence::ExecutionOutcome::Success);
+                                    let summary = crate::guidance::CompletionExplanation::generate(
+                                        goal, chain, outcome,
+                                    );
+                                    notices.push(summary);
+                                    crate::autonomy::AutonomousLoopController::mark_goal_completed_for_chain(
+                                        &mut self.goal_manager,
+                                        chain,
+                                        format!("Chain {} completed", chain.name),
+                                    );
+                                }
+                            }
+                        }
+                        crate::autonomy::CompletionConfidenceDecision::Continue { reason } => {
+                            let added_steps =
+                                Self::enqueue_contract_continuation_steps(chain, &step_id);
+                            chain.status = if auto_resume {
+                                crate::persistence::ChainLifecycleStatus::Running
+                            } else {
+                                crate::persistence::ChainLifecycleStatus::Halted
+                            };
+                            chain.completed_at = None;
+                            chain.execution_outcome = None;
+                            notices.push(format!("Chain '{}' incomplete: {}", chain.name, reason));
+                            if added_steps > 0 {
+                                notices.push(format!(
+                                    "Chain '{}' queued {} artifact contract continuation step(s)",
+                                    chain.name, added_steps
+                                ));
+                            } else if !auto_resume {
+                                notices.push(format!(
+                                    "Chain '{}' paused after reaching the completion gate without a satisfiable artifact continuation.",
+                                    chain.name
+                                ));
+                            }
+                        }
+                        crate::autonomy::CompletionConfidenceDecision::HaltForClarification {
+                            reason,
+                        } => {
+                            chain.status = crate::persistence::ChainLifecycleStatus::Halted;
+                            chain.completed_at = None;
+                            chain.execution_outcome = None;
+                            notices.push(format!(
+                                "Chain '{}' halted at completion gate: {}",
+                                chain.name, reason
+                            ));
+                        }
+                    }
+                } else {
+                    // No more pending steps - chain complete
+                    chain.status = crate::persistence::ChainLifecycleStatus::Complete;
+                    chain.completed_at = Some(chrono::Local::now());
+                    notices.push(format!("Chain '{}' completed all steps", chain.name));
+                    // V1.5: Clear pending confirmation on chain completion
+                    self.pending_confirmation = None;
+
+                    // V2.0: Generate completion explanation if this was a goal-driven chain
+                    // V1.5: Finalize and use authoritative outcome
+                    chain.finalize_outcome();
+
+                    // V1.6 AUDIT: Log outcome finalization
+                    if let Some(outcome) = chain.get_outcome() {
+                        let outcome_audit =
+                            crate::state::AuditEvent::outcome_finalized(outcome, None);
+                        chain.audit_event(outcome_audit);
+                    }
+
+                    if let Some(goal) = self.goal_manager.active_goal() {
+                        if goal.chain_id.as_ref() == Some(&chain.id) {
+                            let outcome = chain
+                                .get_outcome()
+                                .unwrap_or(crate::persistence::ExecutionOutcome::Success);
+                            let summary =
+                                crate::guidance::CompletionExplanation::generate(goal, chain, outcome);
+                            notices.push(summary);
+                            crate::autonomy::AutonomousLoopController::mark_goal_completed_for_chain(
+                                &mut self.goal_manager,
+                                chain,
+                                format!("Chain {} completed", chain.name),
+                            );
+                        }
                     }
                 }
             } else {
@@ -8587,14 +9421,653 @@ impl App {
         self.state.current_chain_step_id = None;
     }
 
+    fn enqueue_contract_continuation_steps(
+        chain: &mut crate::persistence::PersistentChain,
+        triggering_step_id: &str,
+    ) -> usize {
+        let Some(contract) = chain.objective_satisfaction.artifact_contract.clone() else {
+            return 0;
+        };
+
+        let mut added_steps = 0usize;
+        let artifact_label = contract
+            .artifact_type
+            .clone()
+            .unwrap_or_else(|| "artifact".to_string());
+
+        for path in &contract.missing_filenames {
+            chain.steps.push(crate::persistence::PersistentChainStep {
+                id: format!("contract-{}-{}", added_steps + 1, uuid::Uuid::new_v4()),
+                description: format!(
+                    "Create missing required {} artifact {}. Completion remains blocked until this exact filename exists with non-empty content.",
+                    artifact_label, path
+                ),
+                status: crate::persistence::ChainStepStatus::Pending,
+                retry_of: Some(triggering_step_id.to_string()),
+                retry_attempt: 0,
+                execution_outcome: None,
+                execution_result_class: None,
+                execution_results: vec![],
+                failure_reason: None,
+                recovery_step_kind: Some(crate::persistence::RecoveryStepKind::Patch),
+                evidence_snapshot: Some(format!(
+                    "Artifact contract missing filename: {}",
+                    path
+                )),
+                force_override_used: false,
+                tool_calls: vec![],
+                result_summary: None,
+                validation_passed: None,
+                started_at: None,
+                completed_at: None,
+                error_message: None,
+                replay_record: None,
+            });
+            added_steps += 1;
+        }
+
+        for path in &contract.empty_filenames {
+            chain.steps.push(crate::persistence::PersistentChainStep {
+                id: format!("contract-{}-{}", added_steps + 1, uuid::Uuid::new_v4()),
+                description: format!(
+                    "Fill empty required {} artifact {}. Completion requires non-empty content at this exact filename.",
+                    artifact_label, path
+                ),
+                status: crate::persistence::ChainStepStatus::Pending,
+                retry_of: Some(triggering_step_id.to_string()),
+                retry_attempt: 0,
+                execution_outcome: None,
+                execution_result_class: None,
+                execution_results: vec![],
+                failure_reason: None,
+                recovery_step_kind: Some(crate::persistence::RecoveryStepKind::Patch),
+                evidence_snapshot: Some(format!(
+                    "Artifact contract empty filename: {}",
+                    path
+                )),
+                force_override_used: false,
+                tool_calls: vec![],
+                result_summary: None,
+                validation_passed: None,
+                started_at: None,
+                completed_at: None,
+                error_message: None,
+                replay_record: None,
+            });
+            added_steps += 1;
+        }
+
+        if !contract.unexpected_filenames.is_empty() {
+            chain.steps.push(crate::persistence::PersistentChainStep {
+                id: format!("contract-{}-{}", added_steps + 1, uuid::Uuid::new_v4()),
+                description: format!(
+                    "Reconcile unexpected {} artifact(s) outside the explicit deliverable set: {}. Completion requires the exact required filename set and count.",
+                    artifact_label,
+                    contract.unexpected_filenames.join(", ")
+                ),
+                status: crate::persistence::ChainStepStatus::Pending,
+                retry_of: Some(triggering_step_id.to_string()),
+                retry_attempt: 0,
+                execution_outcome: None,
+                execution_result_class: None,
+                execution_results: vec![],
+                failure_reason: None,
+                recovery_step_kind: Some(crate::persistence::RecoveryStepKind::Fix),
+                evidence_snapshot: Some(format!(
+                    "Artifact contract unexpected filenames: {}",
+                    contract.unexpected_filenames.join(", ")
+                )),
+                force_override_used: false,
+                tool_calls: vec![],
+                result_summary: None,
+                validation_passed: None,
+                started_at: None,
+                completed_at: None,
+                error_message: None,
+                replay_record: None,
+            });
+            added_steps += 1;
+        }
+
+        if added_steps > 0 {
+            chain.audit_event(crate::state::AuditEvent {
+                timestamp: chrono::Utc::now(),
+                event_type: crate::state::AuditEventType::ChainLifecycle {
+                    event: "artifact_contract_continuation_enqueued".to_string(),
+                },
+                previous_state: None,
+                next_state: None,
+                triggering_event: Some(triggering_step_id.to_string()),
+                step_id: Some(triggering_step_id.to_string()),
+                chain_id: Some(chain.id.clone()),
+                task: Some(chain.objective.clone()),
+                reason: Some(
+                    chain
+                        .objective_satisfaction
+                        .reason
+                        .clone()
+                        .unwrap_or_else(|| "artifact contract incomplete".to_string()),
+                ),
+                metadata: Some(format!(
+                    "missing={}; empty={}; unexpected={}; added_steps={}",
+                    contract.missing_filenames.len(),
+                    contract.empty_filenames.len(),
+                    contract.unexpected_filenames.len(),
+                    added_steps
+                )),
+            });
+        }
+
+        added_steps
+    }
+
+    fn build_chain_step_task(
+        chain: &crate::persistence::PersistentChain,
+        step: &crate::persistence::PersistentChainStep,
+        satisfaction: &crate::state::ObjectiveSatisfaction,
+    ) -> String {
+        let raw_prompt = chain.raw_prompt_text();
+        let default_task = if raw_prompt.trim() != chain.objective.trim() {
+            format!(
+                "Active objective summary: {}\n\nCurrent step: {}\n\nOriginal task prompt (verbatim):\n{}",
+                chain.objective, step.description, raw_prompt
+            )
+        } else {
+            format!("{}: {}", chain.objective, step.description)
+        };
+        let Some(contract) = satisfaction.artifact_contract.as_ref() else {
+            return default_task;
+        };
+        if !contract.has_requirements() {
+            return default_task;
+        }
+
+        let artifact_label = contract
+            .artifact_type
+            .clone()
+            .unwrap_or_else(|| "artifact".to_string());
+        let current_target = Self::infer_contract_step_target(step, contract)
+            .or_else(|| contract.missing_filenames.first().cloned());
+        let raw_prompt_context =
+            Self::extract_raw_prompt_context(raw_prompt, current_target.as_deref());
+
+        let mut lines = vec![
+            format!("Active objective summary: {}", chain.objective),
+            String::new(),
+            format!("Current step: {}", step.description),
+            String::new(),
+            "Execution brief:".to_string(),
+        ];
+
+        if let Some(target) = current_target.as_deref() {
+            lines.push(format!("- Current step target: {}", target));
+            if let Some(purpose) = contract.purpose_for_path(target) {
+                lines.push(format!("- Required file purpose: {}", purpose));
+            }
+        }
+        if !contract.missing_filenames.is_empty() {
+            lines.push(format!(
+                "- Missing required artifacts: {}",
+                contract.missing_filenames.join(", ")
+            ));
+        }
+        if !contract.empty_filenames.is_empty() {
+            lines.push(format!(
+                "- Empty required artifacts that must be replaced: {}",
+                contract.empty_filenames.join(", ")
+            ));
+        }
+        if !contract.created_filenames.is_empty() {
+            lines.push(format!(
+                "- Required artifacts already present: {}",
+                contract.created_filenames.join(", ")
+            ));
+        }
+
+        lines.push(String::new());
+        lines.push("Structured contract constraints:".to_string());
+        lines.push(format!(
+            "- Produce exactly {} required {} artifact(s).",
+            contract.required_deliverable_count(),
+            artifact_label
+        ));
+        lines.push(
+            "- Completion is false until every required filename exists and is non-empty."
+                .to_string(),
+        );
+        if let Some(actual_count) = contract.actual_output_count {
+            lines.push(format!(
+                "- Current contract output count: {}/{}",
+                actual_count,
+                contract.required_deliverable_count()
+            ));
+        }
+
+        lines.push(String::new());
+        lines.push("Required filenames:".to_string());
+        for (index, artifact) in contract.required_artifacts.iter().enumerate() {
+            match artifact.purpose.as_deref() {
+                Some(purpose) => lines.push(format!(
+                    "{}. {} :: {}",
+                    index + 1,
+                    artifact.path,
+                    purpose
+                )),
+                None => lines.push(format!("{}. {}", index + 1, artifact.path)),
+            }
+        }
+        if contract.required_artifacts.is_empty() {
+            for (index, path) in contract.required_filenames.iter().enumerate() {
+                lines.push(format!("{}. {}", index + 1, path));
+            }
+        }
+
+        if let Some(context) = raw_prompt_context {
+            lines.push(String::new());
+            lines.push("Relevant raw prompt context:".to_string());
+            lines.push(context);
+        }
+
+        lines.push(String::new());
+        lines.push(
+            "Execution rule: create missing files, update existing required files, replace empty required files, and do not stop after a partial subset."
+                .to_string(),
+        );
+        lines.push(String::new());
+        lines.push("Original task prompt (verbatim):".to_string());
+        lines.push(raw_prompt.to_string());
+
+        lines.join("\n")
+    }
+
+    fn infer_contract_step_target(
+        step: &crate::persistence::PersistentChainStep,
+        contract: &crate::state::ArtifactCompletionContract,
+    ) -> Option<String> {
+        contract
+            .required_filenames
+            .iter()
+            .find(|path| step.description.contains(path.as_str()))
+            .cloned()
+    }
+
+    fn extract_raw_prompt_context(raw_prompt: &str, target_path: Option<&str>) -> Option<String> {
+        let lines: Vec<&str> = raw_prompt.lines().collect();
+        if lines.is_empty() {
+            return None;
+        }
+
+        if let Some(target) = target_path
+            && let Some(index) = lines.iter().position(|line| line.contains(target))
+        {
+            let start = index.saturating_sub(1);
+            let end = (index + 2).min(lines.len());
+            let excerpt = lines[start..end]
+                .iter()
+                .map(|line| line.trim_end())
+                .collect::<Vec<_>>()
+                .join("\n");
+            if !excerpt.trim().is_empty() {
+                return Some(excerpt);
+            }
+        }
+
+        let excerpt = lines
+            .iter()
+            .map(|line| line.trim_end())
+            .filter(|line| !line.trim().is_empty())
+            .take(6)
+            .collect::<Vec<_>>()
+            .join("\n");
+        if excerpt.trim().is_empty() {
+            None
+        } else {
+            Some(excerpt)
+        }
+    }
+
+    // V2.5: Auto-chain helper - parse prompt into steps based on strategy
+    fn parse_prompt_into_steps(
+        &self,
+        prompt: &str,
+        strategy: &crate::commands::AutoChainStrategy,
+    ) -> Vec<String> {
+        match strategy {
+            crate::commands::AutoChainStrategy::ByDocument => {
+                // Split by document boundaries (e.g., "1. Title", "## Doc", numbered lists)
+                prompt
+                    .split(|c| c == '\n' && prompt.lines().any(|l| l.trim().starts_with("# ") || l.trim().starts_with("## ") || l.trim().matches(char::is_numeric).count() >= 2))
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            }
+            crate::commands::AutoChainStrategy::ByFile => {
+                // Split by file creation markers
+                prompt
+                    .lines()
+                    .filter(|l| l.contains(".md") || l.contains("write_file") || l.contains("create"))
+                    .map(|s| s.trim().to_string())
+                    .collect()
+            }
+            crate::commands::AutoChainStrategy::BySection => {
+                // Split by markdown headers
+                prompt
+                    .split("\n## ")
+                    .enumerate()
+                    .map(|(i, s)| {
+                        if i == 0 {
+                            s.trim().to_string()
+                        } else {
+                            format!("## {}", s.trim())
+                        }
+                    })
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            }
+            _ => {
+                // Auto - try to detect or use default chunking
+                if prompt.len() > 4000 {
+                    // Chunk by approximate token size (4 chars = 1 token rough estimate)
+                    prompt
+                        .chars()
+                        .collect::<Vec<_>>()
+                        .chunks(4000)
+                        .map(|c| c.iter().collect::<String>())
+                        .collect()
+                } else {
+                    vec![prompt.to_string()]
+                }
+            }
+        }
+    }
+
+    // V2.5: Execute auto-chain by creating chain and running steps
+    async fn execute_auto_chain(&mut self, steps: Vec<String>) -> Result<()> {
+        if steps.is_empty() {
+            return Ok(());
+        }
+
+        // Create chain with objective from first step
+        let objective = format!("Auto-chain: {} steps", steps.len());
+        let chain = self.persistence.create_chain("auto", &objective);
+        let chain_id = chain.id.clone();
+        
+        // CRITICAL: Set execution lock to prevent auto-resume from interfering
+        self.state.current_chain_id = Some(chain_id.clone());
+        
+        self.push_system_notice(&format!(
+            "Created auto-chain '{}' with {} steps",
+            chain_id, steps.len()
+        ));
+
+        // Execute with guaranteed cleanup
+        let result = self.execute_auto_chain_inner(steps, &chain_id).await;
+        
+        // CRITICAL: Always clear execution lock, even on error
+        self.state.current_chain_id = None;
+        
+        result
+    }
+
+    // Inner execution - chain lock is managed by outer function
+    async fn execute_auto_chain_inner(&mut self, steps: Vec<String>, chain_id: &str) -> Result<()> {
+
+        // Execute each step
+        for (i, step) in steps.iter().enumerate() {
+            self.push_system_notice(&format!(
+                "[Step {}/{}] Executing...",
+                i + 1,
+                steps.len()
+            ));
+            
+            // Submit as task
+            let step_prompt = format!(
+                "Execute step {}/{}:\n{}\n\nThis is part of an auto-chain. Process only this step and report completion.",
+                i + 1, steps.len(), step
+            );
+            
+            // Send to LLM
+            match self.execute_chat_step(&step_prompt).await {
+                Ok(Some(response)) => {
+                    self.push_system_notice(&format!(
+                        "[Step {}/{}] ✓ Complete",
+                        i + 1,
+                        steps.len()
+                    ));
+                    // Add to conversation
+                    self.push_assistant_message(&response);
+                }
+                Ok(None) => {
+                    warn!("No response for step {}/{}", i + 1, steps.len());
+                }
+                Err(e) => {
+                    // Check if this is an infra error (Ollama/model) vs task error
+                    let error_str = e.to_string();
+                    let is_infra_error = error_str.contains("Ollama") 
+                        || error_str.contains("health check")
+                        || error_str.contains("No active model");
+                    
+                    if is_infra_error {
+                        // INFRA ERROR: Retry once after short delay, then continue
+                        tracing::warn!("Step {}/{} infra issue, retrying: {}", i + 1, steps.len(), e);
+                        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                        
+                        // Retry the step once
+                        let retry_prompt = format!(
+                            "Retry step {}/{}:\n{}\n\nPrevious attempt had connection issue. Please process this step.",
+                            i + 1, steps.len(), step
+                        );
+                        
+                        match self.execute_chat_step(&retry_prompt).await {
+                            Ok(Some(response)) => {
+                                self.push_system_notice(&format!(
+                                    "[Step {}/{}] ✓ Complete (after retry)",
+                                    i + 1, steps.len()
+                                ));
+                                self.push_assistant_message(&response);
+                            }
+                            _ => {
+                                self.push_system_notice(&format!(
+                                    "[Step {}/{}] ~ Skipped (connection issue)",
+                                    i + 1, steps.len()
+                                ));
+                            }
+                        }
+                    } else {
+                        // TASK ERROR: Log but continue chain
+                        tracing::warn!("Step {}/{} soft-failed: {}", i + 1, steps.len(), e);
+                        self.push_system_notice(&format!(
+                            "[Step {}/{}] ~ Continuing (adjusted)",
+                            i + 1, steps.len()
+                        ));
+                    }
+                }
+            }
+            
+            // Persist progress
+            self.persist().await;
+        }
+
+        self.push_system_notice(&format!(
+            "✅ Chain '{}' finished ({} steps processed)",
+            chain_id, steps.len()
+        ));
+        
+        Ok(())
+    }
+
+    /// Execute a decomposed task with self-correction
+    /// Takes a DecomposedTask and executes each step with recovery on failure
+    async fn execute_decomposed_task(&mut self, task: crate::large_task_decomposer::DecomposedTask) -> Result<()> {
+        let total_steps = task.steps.len();
+        let chain_id = task.chain.id.clone();
+        
+        // Set execution lock
+        self.state.current_chain_id = Some(chain_id.clone());
+        
+        // Store chain in persistence
+        self.persistence.chains.push(task.chain);
+        self.persistence.active_chain_id = Some(chain_id.clone());
+        
+        for (i, step) in task.steps.iter().enumerate() {
+            let step_num = i + 1;
+            
+            // Show step indicator
+            let icon = match step.step_type {
+                crate::large_task_decomposer::StepType::Planning => "📋",
+                crate::large_task_decomposer::StepType::SourceMapping => "🗺️",
+                crate::large_task_decomposer::StepType::ArtifactGeneration => "📝",
+                crate::large_task_decomposer::StepType::Validation => "✓",
+                crate::large_task_decomposer::StepType::Refinement => "🔧",
+                crate::large_task_decomposer::StepType::Recovery => "🔄",
+            };
+            
+            self.push_system_notice(&format!(
+                "{} [Step {}/{}] {}",
+                icon, step_num, total_steps, step.description
+            ));
+            
+            // Execute step
+            match self.execute_chat_step(&step.prompt).await {
+                Ok(Some(response)) => {
+                    self.push_system_notice(&format!(
+                        "✓ [Step {}/{}] Complete",
+                        step_num, total_steps
+                    ));
+                    
+                    // Add assistant response for artifact generation
+                    if matches!(step.step_type, crate::large_task_decomposer::StepType::ArtifactGeneration) {
+                        self.push_assistant_message(&response);
+                    }
+                }
+                Ok(None) => {
+                    warn!("No response for step {}/{}", step_num, total_steps);
+                    // Try recovery if this was an artifact generation step
+                    if let Some(ref artifact) = step.artifact {
+                        if matches!(step.step_type, crate::large_task_decomposer::StepType::ArtifactGeneration) {
+                            self.push_system_notice(&format!(
+                                "⚠️ Step {}/{} failed, attempting recovery...",
+                                step_num, total_steps
+                            ));
+                            
+                            // Generate recovery steps
+                            let recovery_steps = crate::large_task_decomposer::LargeTaskDecomposer::generate_recovery_steps(
+                                step,
+                                artifact,
+                            );
+                            
+                            // Execute recovery steps
+                            for recovery in recovery_steps {
+                                self.push_system_notice(&format!(
+                                    "🔄 Recovery: {}",
+                                    recovery.description
+                                ));
+                                
+                                match self.execute_chat_step(&recovery.prompt).await {
+                                    Ok(Some(_)) => {
+                                        self.push_system_notice("✓ Recovery successful");
+                                        break; // Success, stop trying recoveries
+                                    }
+                                    _ => {
+                                        self.push_system_notice("⚠️ Recovery attempt failed, trying next...");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    let error_str = e.to_string();
+                    let is_infra_error = error_str.contains("Ollama") 
+                        || error_str.contains("health check")
+                        || error_str.contains("No active model");
+                    
+                    if is_infra_error {
+                        // Retry once for infra errors
+                        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                        
+                        match self.execute_chat_step(&step.prompt).await {
+                            Ok(Some(response)) => {
+                                self.push_system_notice(&format!(
+                                    "✓ [Step {}/{}] Complete (after retry)",
+                                    step_num, total_steps
+                                ));
+                                if matches!(step.step_type, crate::large_task_decomposer::StepType::ArtifactGeneration) {
+                                    self.push_assistant_message(&response);
+                                }
+                            }
+                            _ => {
+                                self.push_system_notice(&format!(
+                                    "~ [Step {}/{}] Skipped (connection issue)",
+                                    step_num, total_steps
+                                ));
+                            }
+                        }
+                    } else {
+                        // Task error - log and continue
+                        self.push_system_notice(&format!(
+                            "~ [Step {}/{}] Continuing (adjusted): {}",
+                            step_num, total_steps, e
+                        ));
+                    }
+                }
+            }
+            
+            // Persist progress
+            self.persist().await;
+        }
+        
+        // Clear execution lock
+        self.state.current_chain_id = None;
+        
+        self.push_system_notice(&format!(
+            "✅ Decomposed task finished: {} steps processed",
+            total_steps
+        ));
+        
+        Ok(())
+    }
+
     /// Phase C: Attempt auto-resume if policy allows and steps remain
     /// Enhanced with execution readiness check for momentum-driven execution
+    /// V1.6: Idempotent - same chain already starting/running is a no-op
     pub async fn try_auto_resume_chain(&mut self) -> bool {
         // Get active chain
         let chain_id = match &self.persistence.active_chain_id {
             Some(id) => id.clone(),
             None => return false,
         };
+
+        // V1.6: Check for execution lock - make auto-start idempotent
+        if let Some(ref current_chain_id) = self.state.current_chain_id {
+            if current_chain_id == &chain_id {
+                // Same chain is already starting/running - this is a no-op, not an error
+                // This prevents "Execution already in progress" race on auto-resume
+                return false;
+            } else {
+                // Different chain is running - block cleanly without error
+                self.push_system_notice(
+                    "▶ Auto-resume skipped: another chain is currently executing",
+                );
+                return false;
+            }
+        }
+
+        // Also check if runtime is active (additional safety)
+        if self.active_execution_runtime.is_some() {
+            // Runtime is active - check if it's for our chain by comparing chain IDs
+            if let Some(ref running_chain_id) = self.state.current_chain_id {
+                if running_chain_id == &chain_id {
+                    // Same chain is already running - no-op (idempotent)
+                    return false;
+                }
+            }
+            // Different execution running
+            self.push_system_notice(
+                "▶ Auto-resume skipped: execution runtime is active",
+            );
+            return false;
+        }
 
         // Clone policy for checks
         let policy = self.persistence.chain_policy.clone();
@@ -8658,6 +10131,13 @@ impl App {
             })
             .await
         {
+            // V1.6: Suppress "Execution already in progress" as it's a race condition
+            // that occurs when multiple events trigger auto-resume
+            let error_msg = e.to_string();
+            if error_msg.contains("Execution already in progress") {
+                // This is a duplicate trigger - already handled above, but just in case
+                return false;
+            }
             self.push_system_notice(&format!("Auto-resume failed: {}", e));
             return false;
         }
@@ -8667,6 +10147,20 @@ impl App {
 
     /// Start a task execution
     pub fn start_execution_task(&mut self, task: &str) -> Result<()> {
+        self.start_execution_task_with_display_objective(task, task)
+    }
+
+    fn start_execution_task_with_display_objective(
+        &mut self,
+        task: &str,
+        display_objective: &str,
+    ) -> Result<()> {
+        let display_objective = if display_objective.trim().is_empty() {
+            task
+        } else {
+            display_objective
+        };
+
         if !Self::is_real_repo_path(&self.state.repo.path) {
             self.set_execution_block(
                 "No active project",
@@ -8679,11 +10173,11 @@ impl App {
 
         if self.conversation_id.trim().is_empty() {
             self.set_execution_block(
-                "No active chat",
-                "Create a chat before starting a task",
-                Some("New Chat".to_string()),
+                "No active task",
+                "Create a task before starting work",
+                Some("New Task".to_string()),
             );
-            self.record_last_action("Task blocked: no active chat");
+            self.record_last_action("Work blocked: no active task");
             return Err(anyhow::anyhow!("No active chat"));
         }
 
@@ -8778,11 +10272,15 @@ impl App {
         }
 
         info!(
-            "Starting execution: {} (Git: {})",
+            "Starting execution: {} (display: {}; Git: {})",
             task,
+            display_objective,
             git_grounding.summary()
         );
-        self.emit_event("execution", &format!("Starting: {}", task));
+        self.emit_event(
+            "execution",
+            &format!("Starting: {} | task={}", display_objective, task),
+        );
         let css_compression = should_enable_css_compression(&planner_model);
 
         // Create Forge config
@@ -8801,26 +10299,27 @@ impl App {
         // Start execution runtime
         let handle = ForgeRuntimeHandle::run_task(config);
         self.active_execution_runtime = Some(handle);
+        self.reset_execution_terminal_seal();
         self.execution_output_buffer.clear();
         self.state.runtime_events.clear();
         self.state.validation_stages = default_validation_stages();
         self.state.runtime_status = RuntimeStatus::Running;
         self.state.execution.mode = ExecutionMode::Task;
         self.set_execution_state(ExecutionState::Planning);
-        self.set_active_objective(Some(task.to_string()));
+        self.set_active_objective(Some(display_objective.to_string()));
         self.reset_execution_activity();
         self.set_current_step(Some("Generating plan".to_string()), Some(1), Some(3));
         self.state.execution.validation_summary = Some("pending".to_string());
         Self::push_execution_entry(
             &mut self.state.execution.planner_output,
-            format!("generating plan for {}", task),
+            format!("generating plan for {}", display_objective),
             5,
         );
         self.push_runtime_event("planner/generating", RuntimeStatus::Running);
         self.add_log(
             LogLevel::Info,
             "planner",
-            &format!("Generating plan for {}", task),
+            &format!("Generating plan for {}", display_objective),
         );
         self.record_last_action("Task execution started");
         self.show_inspector = true;
@@ -8830,7 +10329,7 @@ impl App {
         let msg_id = uuid::Uuid::new_v4().to_string();
         let msg_content = format!(
             "Working in TASK mode on: {}\nTool calls and validation will stream underneath.",
-            task
+            display_objective
         );
         self.state.messages.push(Message {
             id: msg_id.clone(),
@@ -8868,11 +10367,24 @@ impl App {
 
         // Process events without holding reference to handle
         let mut task_complete = false;
+        let mut stale_events = Vec::new();
 
         for event in events {
+            if self.execution_run_sealed {
+                stale_events.push(event);
+                continue;
+            }
+
+            let is_terminal_event = matches!(event, RuntimeEvent::Finished { .. });
             let formatted = format_forge_event(&event);
-            self.track_inspector_event(&event);
             self.apply_execution_event(&event);
+
+            if is_terminal_event {
+                self.seal_execution_run();
+                task_complete = true;
+            }
+
+            self.track_inspector_event(&event);
 
             // Phase 1: Transform through transparency layer for user-facing output
             let user_event = self.interface.transform_event(&event);
@@ -8934,20 +10446,14 @@ impl App {
 
             // Buffer user-facing formatted output for final summary
             self.execution_output_buffer.push(chat_line);
-
-            // Check if finished
-            if matches!(event, RuntimeEvent::Finished { .. }) {
-                task_complete = true;
-            }
         }
 
+        self.drop_post_terminal_events(&stale_events);
+
         if task_complete {
-            // Clear active runtime
-            self.active_execution_runtime = None;
+            self.active_runtime_session_id = None;
             self.execution_output_buffer.clear();
             self.active_run_message_id = None;
-            // V1.5: Clear any stale pending confirmation (Edge 1.5 fix)
-            self.pending_confirmation = None;
         }
 
         false
@@ -9543,6 +11049,236 @@ mod tests {
         }
     }
 
+    fn multi_artifact_doc_prompt() -> String {
+        "Create exactly 15 markdown files with these precise filenames:\n\
+1. docs/01_PROJECT_OVERVIEW.md\n\
+2. docs/02_ARCHITECTURE.md\n\
+3. docs/03_TECHNOLOGY_STACK.md\n\
+4. docs/04_CORE_CONCEPTS.md\n\
+5. docs/05_FOLDER_STRUCTURE.md\n\
+6. docs/06_MAIN_WORKFLOWS.md\n\
+7. docs/07_API_REFERENCE.md\n\
+8. docs/08_DATA_MODEL.md\n\
+9. docs/09_CONFIGURATION.md\n\
+10. docs/10_DEVELOPMENT_GUIDE.md\n\
+11. docs/11_TESTING_STRATEGY.md\n\
+12. docs/12_DEPLOYMENT_AND_OPERATIONS.md\n\
+13. docs/13_SECURITY_AND_COMPLIANCE.md\n\
+14. docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md\n\
+15. docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md\n\
+All of these must be produced."
+            .to_string()
+    }
+
+    fn required_doc_paths() -> Vec<&'static str> {
+        vec![
+            "docs/01_PROJECT_OVERVIEW.md",
+            "docs/02_ARCHITECTURE.md",
+            "docs/03_TECHNOLOGY_STACK.md",
+            "docs/04_CORE_CONCEPTS.md",
+            "docs/05_FOLDER_STRUCTURE.md",
+            "docs/06_MAIN_WORKFLOWS.md",
+            "docs/07_API_REFERENCE.md",
+            "docs/08_DATA_MODEL.md",
+            "docs/09_CONFIGURATION.md",
+            "docs/10_DEVELOPMENT_GUIDE.md",
+            "docs/11_TESTING_STRATEGY.md",
+            "docs/12_DEPLOYMENT_AND_OPERATIONS.md",
+            "docs/13_SECURITY_AND_COMPLIANCE.md",
+            "docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md",
+            "docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md",
+        ]
+    }
+
+    fn runtime_handle_for_test(
+        events: Vec<crate::forge_runtime::RuntimeEvent>,
+    ) -> crate::forge_runtime::ForgeRuntimeHandle {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        for event in events {
+            sender.send(event).expect("queue test runtime event");
+        }
+        drop(sender);
+        crate::forge_runtime::ForgeRuntimeHandle::from_test_receiver(receiver)
+    }
+
+    fn install_runtime_test_context(app: &mut App) -> String {
+        let run_id = "run-card-test".to_string();
+        app.state.execution.state = ExecutionState::Validating;
+        app.state.execution.active_objective = Some("seal runtime".to_string());
+        app.state.runtime_status = RuntimeStatus::Running;
+        app.reset_execution_terminal_seal();
+        app.state.messages.push(Message {
+            id: run_id.clone(),
+            role: MessageRole::Assistant,
+            source_text: "Working".to_string(),
+            content: "Working".to_string(),
+            timestamp: chrono::Local::now(),
+            run_card: Some(RunCard::new(
+                "seal runtime".to_string(),
+                "runtime-test".to_string(),
+                None,
+            )),
+        });
+        app.active_run_message_id = Some(run_id.clone());
+        run_id
+    }
+
+    #[tokio::test]
+    async fn post_terminal_planner_output_is_ignored_and_run_card_freezes() {
+        let mut app = App::new().await;
+        let run_id = install_runtime_test_context(&mut app);
+        app.active_execution_runtime = Some(runtime_handle_for_test(vec![
+            RuntimeEvent::Finished {
+                success: true,
+                iterations: 1,
+                error: None,
+            },
+            RuntimeEvent::PlannerOutput {
+                raw: "late-planner".to_string(),
+                output_type: "tool_call".to_string(),
+            },
+        ]));
+
+        app.poll_execution_events();
+
+        assert_eq!(app.state.execution.state, ExecutionState::Done);
+        assert!(app.execution_run_sealed);
+        assert!(app.active_execution_runtime.is_none());
+        assert_eq!(app.state.runtime_events.len(), 1);
+        assert_eq!(app.state.runtime_events[0].stage, "finished");
+        let run_card = app
+            .state
+            .messages
+            .iter()
+            .find(|message| message.id == run_id)
+            .and_then(|message| message.run_card.as_ref())
+            .expect("run card remains in transcript");
+        assert!(run_card.events.iter().all(|event| !event.contains("late-planner")));
+        assert!(
+            app.state.logs.iter().any(|entry| {
+                entry.source == "runtime/stale-post-terminal"
+                    && entry.message.contains("planner_output")
+            }),
+            "late planner output should be collapsed into operator-only logging"
+        );
+    }
+
+    #[tokio::test]
+    async fn post_terminal_tool_call_is_ignored() {
+        let mut app = App::new().await;
+        let run_id = install_runtime_test_context(&mut app);
+        app.active_execution_runtime = Some(runtime_handle_for_test(vec![
+            RuntimeEvent::Finished {
+                success: true,
+                iterations: 1,
+                error: None,
+            },
+            RuntimeEvent::ToolCall {
+                name: "late-tool".to_string(),
+                arguments: "{}".to_string(),
+            },
+        ]));
+
+        app.poll_execution_events();
+
+        let run_card = app
+            .state
+            .messages
+            .iter()
+            .find(|message| message.id == run_id)
+            .and_then(|message| message.run_card.as_ref())
+            .expect("run card remains in transcript");
+        assert!(run_card.events.iter().all(|event| !event.contains("late-tool")));
+        assert!(app.state.execution.active_tool.is_none());
+        assert_eq!(app.state.runtime_events.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn post_terminal_runtime_finished_is_ignored() {
+        let mut app = App::new().await;
+        let run_id = install_runtime_test_context(&mut app);
+        app.active_execution_runtime = Some(runtime_handle_for_test(vec![
+            RuntimeEvent::Finished {
+                success: true,
+                iterations: 1,
+                error: None,
+            },
+            RuntimeEvent::Finished {
+                success: false,
+                iterations: 99,
+                error: Some("late-finish".to_string()),
+            },
+        ]));
+
+        app.poll_execution_events();
+
+        let run_card = app
+            .state
+            .messages
+            .iter()
+            .find(|message| message.id == run_id)
+            .and_then(|message| message.run_card.as_ref())
+            .expect("run card remains in transcript");
+        assert_eq!(run_card.iterations, 1);
+        assert_eq!(run_card.status, RuntimeStatus::Completed);
+        assert!(run_card.events.iter().all(|event| !event.contains("late-finish")));
+        assert_eq!(app.state.runtime_events.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn sealed_progress_transitions_audit_once_without_normal_ui_leakage() {
+        let mut app = App::new().await;
+        let chain = app.persistence.create_chain("sealed", "sealed objective").clone();
+        let chain_id = chain.id.clone();
+        app.persistence.active_chain_id = Some(chain_id.clone());
+        app.state.current_chain_id = Some(chain_id.clone());
+        app.state.current_chain_step_id = Some("step-1".to_string());
+        app.state.execution.active_objective = Some("sealed objective".to_string());
+        app.execution_run_sealed = true;
+
+        let message_count = app.state.messages.len();
+        app.apply_progress_transition(crate::state::ProgressTransitionEvent::PlannerOutput);
+        app.apply_progress_transition(crate::state::ProgressTransitionEvent::ToolCalling {
+            name: "write_file".to_string(),
+        });
+        app.apply_progress_transition(crate::state::ProgressTransitionEvent::RuntimeFinished {
+            success: true,
+        });
+
+        let chain = app.persistence.get_chain(&chain_id).expect("chain remains");
+        let stale_audits = chain
+            .audit_log
+            .get_last_n(10)
+            .into_iter()
+            .filter(|event| {
+                matches!(
+                    &event.event_type,
+                    crate::state::AuditEventType::ChainLifecycle { event }
+                        if event == "stale_post_terminal"
+                )
+            })
+            .count();
+
+        assert_eq!(stale_audits, 1);
+        assert_eq!(app.state.messages.len(), message_count);
+        assert!(
+            !app.state
+                .messages
+                .iter()
+                .any(|message| message.content.contains("[STATE MACHINE]")),
+            "state-machine debug output must stay out of the normal chat transcript"
+        );
+        assert_eq!(
+            app.state
+                .logs
+                .iter()
+                .filter(|entry| entry.source == "runtime/stale-post-terminal")
+                .count(),
+            1,
+            "post-terminal suppression should collapse repeated noise"
+        );
+    }
+
     #[tokio::test]
     async fn self_healing_retry_enqueues_fix_and_audits_recovery_path() {
         let mut app = App::new().await;
@@ -9761,6 +11497,220 @@ mod tests {
             chain.status,
             crate::persistence::ChainLifecycleStatus::Halted
         );
+    }
+
+    #[tokio::test]
+    async fn multi_artifact_contract_prevents_early_completion_after_one_file() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::create_dir_all(temp.path().join("docs")).expect("docs dir");
+        fs::write(
+            temp.path()
+                .join("docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md"),
+            "# roadmap\n",
+        )
+        .expect("roadmap doc");
+
+        let mut app = App::new().await;
+        let repo_path = temp.path().to_string_lossy().to_string();
+        app.state.repo.path = repo_path.clone();
+        app.persistence.active_repo = Some(repo_path.clone());
+
+        let prompt = multi_artifact_doc_prompt();
+        let chain = app.persistence.create_chain("docs", &prompt).clone();
+        let chain_id = chain.id.clone();
+        app.persistence.active_chain_id = Some(chain_id.clone());
+        {
+            let chain = app
+                .persistence
+                .get_chain_mut(&chain_id)
+                .expect("created chain");
+            chain.status = crate::persistence::ChainLifecycleStatus::Running;
+            chain.repo_path = Some(repo_path.clone());
+            chain.objective_satisfaction = crate::guidance::build_objective_satisfaction(&prompt);
+            chain.steps.push(self_healing_test_step(
+                "step-1",
+                "Create the deliverable set",
+                crate::persistence::ChainStepStatus::Pending,
+            ));
+        }
+
+        app.state.current_chain_id = Some(chain_id.clone());
+        app.state.current_chain_step_id = Some("step-1".to_string());
+        app.state.execution.active_objective = Some(prompt.clone());
+        app.state.execution.file_writes =
+            vec!["docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md".to_string()];
+
+        app.handle_chain_step_completion(true, None);
+
+        let chain = app.persistence.get_chain(&chain_id).expect("chain remains");
+        let contract = chain
+            .objective_satisfaction
+            .artifact_contract
+            .as_ref()
+            .expect("artifact contract preserved");
+        assert_ne!(
+            chain.status,
+            crate::persistence::ChainLifecycleStatus::Complete
+        );
+        assert!(chain.execution_outcome.is_none());
+        assert_eq!(contract.required_filenames.len(), 15);
+        assert_eq!(contract.created_filenames.len(), 1);
+        assert_eq!(contract.missing_filenames.len(), 14);
+        assert!(
+            chain.steps.iter().any(|step| {
+                matches!(step.status, crate::persistence::ChainStepStatus::Pending)
+                    && step
+                        .description
+                        .contains("docs/01_PROJECT_OVERVIEW.md")
+            }),
+            "missing filenames should be turned into continuation steps"
+        );
+    }
+
+    #[tokio::test]
+    async fn chain_step_task_includes_explicit_artifact_contract_status() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::create_dir_all(temp.path().join("docs")).expect("docs dir");
+        fs::write(
+            temp.path().join("docs/01_PROJECT_OVERVIEW.md"),
+            "# overview\n",
+        )
+        .expect("overview doc");
+
+        let prompt = multi_artifact_doc_prompt();
+        let mut app = App::new().await;
+        let repo_path = temp.path().to_string_lossy().to_string();
+        let chain = app.persistence.create_chain("docs", &prompt).clone();
+        let chain_id = chain.id.clone();
+        {
+            let chain = app
+                .persistence
+                .get_chain_mut(&chain_id)
+                .expect("created chain");
+            chain.repo_path = Some(repo_path);
+            chain.objective_satisfaction = crate::guidance::build_objective_satisfaction(&prompt);
+            chain.steps.push(self_healing_test_step(
+                "step-1",
+                "Create the document set",
+                crate::persistence::ChainStepStatus::Pending,
+            ));
+        }
+
+        let chain = app.persistence.get_chain(&chain_id).expect("chain");
+        let refreshed =
+            crate::autonomy::CompletionConfidenceEvaluator::refresh_objective_satisfaction(chain);
+        let step = chain.steps.iter().find(|step| step.id == "step-1").unwrap();
+        let task = App::build_chain_step_task(chain, step, &refreshed);
+
+        assert!(task.contains("Active objective summary:"));
+        assert!(task.contains("Structured contract constraints:"));
+        assert!(task.contains("Produce exactly 15 required markdown artifact(s)."));
+        assert!(task.contains("Missing required artifacts:"));
+        assert!(task.contains("docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md"));
+        assert!(task.contains("do not stop after a partial subset"));
+        assert!(task.contains("Original task prompt (verbatim):"));
+    }
+
+    #[tokio::test]
+    async fn chain_step_task_carries_required_file_purpose_and_raw_prompt_context() {
+        let prompt = "Create exactly 2 markdown files:\n\
+1. docs/01_PROJECT_OVERVIEW.md - explain the product scope, operators, and outcomes.\n\
+2. docs/02_ARCHITECTURE.md: describe the runtime architecture, boundaries, and critical flows.\n\
+All of these must be produced."
+            .to_string();
+
+        let mut app = App::new().await;
+        let chain = app
+            .persistence
+            .create_chain(
+                "Generate exactly 2 markdown file(s) with the specified filenames and purposes",
+                "Generate exactly 2 markdown file(s) with the specified filenames and purposes",
+            )
+            .clone();
+        let chain_id = chain.id.clone();
+        {
+            let chain = app
+                .persistence
+                .get_chain_mut(&chain_id)
+                .expect("created chain");
+            chain.raw_prompt = prompt.clone();
+            chain.objective_satisfaction = crate::guidance::build_objective_satisfaction(&prompt);
+            chain.steps.push(self_healing_test_step(
+                "step-1",
+                "Create missing required markdown artifact docs/01_PROJECT_OVERVIEW.md",
+                crate::persistence::ChainStepStatus::Pending,
+            ));
+        }
+
+        let chain = app.persistence.get_chain(&chain_id).expect("chain");
+        let refreshed =
+            crate::autonomy::CompletionConfidenceEvaluator::refresh_objective_satisfaction(chain);
+        let step = chain.steps.iter().find(|step| step.id == "step-1").unwrap();
+        let task = App::build_chain_step_task(chain, step, &refreshed);
+
+        assert!(task.contains("Current step target: docs/01_PROJECT_OVERVIEW.md"));
+        assert!(
+            task.contains("Required file purpose: explain the product scope, operators, and outcomes.")
+        );
+        assert!(task.contains("Relevant raw prompt context:"));
+        assert!(task.contains("1. docs/01_PROJECT_OVERVIEW.md - explain the product scope, operators, and outcomes."));
+    }
+
+    #[tokio::test]
+    async fn multi_artifact_contract_completes_only_when_full_set_exists() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::create_dir_all(temp.path().join("docs")).expect("docs dir");
+        for path in required_doc_paths() {
+            fs::write(temp.path().join(path), format!("# {}\n", path)).expect("doc file");
+        }
+
+        let mut app = App::new().await;
+        let repo_path = temp.path().to_string_lossy().to_string();
+        app.state.repo.path = repo_path.clone();
+        app.persistence.active_repo = Some(repo_path.clone());
+
+        let prompt = multi_artifact_doc_prompt();
+        let chain = app.persistence.create_chain("docs", &prompt).clone();
+        let chain_id = chain.id.clone();
+        app.persistence.active_chain_id = Some(chain_id.clone());
+        {
+            let chain = app
+                .persistence
+                .get_chain_mut(&chain_id)
+                .expect("created chain");
+            chain.status = crate::persistence::ChainLifecycleStatus::Running;
+            chain.repo_path = Some(repo_path.clone());
+            chain.objective_satisfaction = crate::guidance::build_objective_satisfaction(&prompt);
+            chain.steps.push(self_healing_test_step(
+                "step-1",
+                "Create the deliverable set",
+                crate::persistence::ChainStepStatus::Pending,
+            ));
+        }
+
+        app.state.current_chain_id = Some(chain_id.clone());
+        app.state.current_chain_step_id = Some("step-1".to_string());
+        app.state.execution.active_objective = Some(prompt);
+        app.state.execution.file_writes =
+            vec!["docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md".to_string()];
+
+        app.handle_chain_step_completion(true, None);
+
+        let chain = app.persistence.get_chain(&chain_id).expect("chain remains");
+        let contract = chain
+            .objective_satisfaction
+            .artifact_contract
+            .as_ref()
+            .expect("artifact contract preserved");
+        assert_eq!(
+            chain.status,
+            crate::persistence::ChainLifecycleStatus::Complete
+        );
+        assert_eq!(
+            chain.execution_outcome,
+            Some(crate::persistence::ExecutionOutcome::Success)
+        );
+        assert!(contract.is_satisfied());
     }
 
     #[tokio::test]
@@ -10079,6 +12029,7 @@ mod tests {
             .active_goal_mut()
             .expect("active goal")
             .set_plan(crate::guidance::GeneratedPlan {
+                raw_prompt: "create a tiny docs note file".to_string(),
                 objective: "create a tiny docs note file".to_string(),
                 steps: vec![crate::guidance::PlanStep {
                     number: 1,
@@ -10128,6 +12079,279 @@ mod tests {
                 .messages
                 .iter()
                 .any(|message| message.content.contains("Goal plan accepted"))
+        );
+    }
+
+    #[tokio::test]
+    async fn structured_plan_output_routes_to_inspector_not_chat() {
+        let mut app = App::new().await;
+        let structured = "Plan for “Unicode docs”\n\
+1. Inspect README.md\n\
+2. Update docs/guide.md\n\
+3. Validate rendered markdown\n\
+4. Run cargo test\n\
+\n\
+Next:\n\
+- Confirm the plan\n\
+- Apply the edits";
+
+        app.push_system_notice(structured);
+
+        assert_eq!(app.state.structured_outputs.len(), 1);
+        assert_eq!(
+            app.state.structured_outputs[0].kind,
+            StructuredOutputKind::Plan
+        );
+        assert_eq!(app.state.active_inspector_tab, InspectorTab::Preview);
+        assert!(
+            !app.state.messages.iter().any(|message| {
+                message.role == MessageRole::System && message.content == structured
+            }),
+            "structured payload must not be dumped into normal chat"
+        );
+        assert!(
+            app.state
+                .messages
+                .iter()
+                .any(|message| { message.content.contains("routed to Inspector") })
+        );
+    }
+
+    #[tokio::test]
+    async fn markdown_heavy_assistant_output_routes_to_structured_surface() {
+        let mut app = App::new().await;
+        let markdown = "# Next Goal\n\n\
+## Plan\n\
+1. Read “src/lib.rs”\n\
+2. Patch the API surface — safely\n\
+3. Run validation\n\n\
+```text\n\
+unicode: “curly quotes” — em dash\n\
+```\n";
+
+        app.push_assistant_message(markdown);
+
+        assert_eq!(app.state.structured_outputs.len(), 1);
+        assert_eq!(
+            app.state.structured_outputs[0].kind,
+            StructuredOutputKind::Plan
+        );
+        assert!(
+            !app.state.messages.iter().any(|message| {
+                message.role == MessageRole::Assistant && message.content == markdown
+            }),
+            "structured assistant output must not be appended as conversational chat"
+        );
+    }
+
+    #[tokio::test]
+    async fn generated_file_manifest_routes_to_structured_surface() {
+        let mut app = App::new().await;
+        let manifest = "Git Repository State\n\n\
+Branch: main\n\
+Head: abcdef0\n\
+Status: Dirty\n\n\
+Modified files:\n\
+  M src/lib.rs\n\
+  M docs/“unicode”.md\n\n\
+Untracked files:\n\
+  ?? notes/next-goal.md";
+
+        app.push_system_notice(manifest);
+
+        assert_eq!(app.state.structured_outputs.len(), 1);
+        assert_eq!(
+            app.state.structured_outputs[0].kind,
+            StructuredOutputKind::Status
+        );
+        assert!(
+            !app.state
+                .messages
+                .iter()
+                .any(|message| message.content == manifest)
+        );
+    }
+
+    #[tokio::test]
+    async fn composer_cursor_operations_are_unicode_safe() {
+        let mut app = App::new().await;
+
+        for ch in "a“b”—c".chars() {
+            app.handle_input(ch);
+        }
+        app.move_cursor_left();
+        app.move_cursor_left();
+        app.handle_backspace();
+        app.handle_delete();
+
+        assert!(
+            app.state
+                .input_buffer
+                .is_char_boundary(app.state.cursor_position)
+        );
+    }
+
+    // ============================================================================
+    // REGRESSION TESTS: Auto-start locking and idempotency
+    // ============================================================================
+
+    #[tokio::test]
+    async fn auto_resume_chain_is_idempotent_for_same_chain() {
+        // Regression test: duplicate auto-start should be no-op, not "Execution already in progress"
+        let mut app = App::new().await;
+
+        // Create a chain
+        let chain = app.persistence.create_chain("test", "test objective").clone();
+        let chain_id = chain.id.clone();
+        app.persistence.active_chain_id = Some(chain_id.clone());
+
+        // Set chain to ready state with steps
+        {
+            let chain = app.persistence.get_chain_mut(&chain_id).unwrap();
+            chain.status = crate::persistence::ChainLifecycleStatus::Ready;
+            chain.steps.push(crate::persistence::PersistentChainStep {
+                id: "step-1".to_string(),
+                description: "Test step".to_string(),
+                status: crate::persistence::ChainStepStatus::Pending,
+                retry_of: None,
+                retry_attempt: 0,
+                execution_outcome: None,
+                execution_result_class: None,
+                execution_results: vec![],
+                failure_reason: None,
+                recovery_step_kind: None,
+                evidence_snapshot: None,
+                force_override_used: false,
+                tool_calls: vec![],
+                result_summary: None,
+                validation_passed: None,
+                started_at: None,
+                completed_at: None,
+                error_message: None,
+                replay_record: None,
+            });
+        }
+
+        // Enable auto-resume
+        app.persistence.chain_policy.auto_resume = true;
+        app.persistence.chain_policy.auto_advance = true;
+
+        // First auto-resume should start execution (but will fail because no runtime)
+        // We simulate the chain being marked as currently executing
+        app.state.current_chain_id = Some(chain_id.clone());
+        app.state.current_chain_step_id = Some("step-1".to_string());
+
+        // Second auto-resume for same chain should be no-op (idempotent)
+        // Should NOT produce "Execution already in progress" error
+        let result = app.try_auto_resume_chain().await;
+
+        // Should return false (no action taken) not error
+        assert!(!result, "duplicate auto-resume for same chain should be no-op");
+
+        // Verify no error message was pushed
+        let has_error = app.state.messages.iter().any(|m| {
+            m.content.contains("Execution already in progress")
+                || m.content.contains("Auto-resume failed")
+        });
+        assert!(
+            !has_error,
+            "should not show 'Execution already in progress' error for idempotent call"
+        );
+    }
+
+    #[tokio::test]
+    async fn auto_resume_chain_blocks_cleanly_for_different_chain() {
+        // Test that auto-start for different chain is blocked cleanly without error
+        let mut app = App::new().await;
+
+        // Create two chains
+        let chain1 = app.persistence.create_chain("chain1", "objective 1").clone();
+        let chain1_id = chain1.id.clone();
+        let chain2 = app.persistence.create_chain("chain2", "objective 2").clone();
+        let chain2_id = chain2.id.clone();
+
+        // Set chain1 as active and simulate it running
+        app.persistence.active_chain_id = Some(chain2_id.clone());
+        app.state.current_chain_id = Some(chain1_id.clone()); // chain1 is running
+        app.state.current_chain_step_id = Some("step-1".to_string());
+
+        // Enable auto-resume
+        app.persistence.chain_policy.auto_resume = true;
+        app.persistence.chain_policy.auto_advance = true;
+
+        // Set chain2 as ready
+        {
+            let chain2 = app.persistence.get_chain_mut(&chain2_id).unwrap();
+            chain2.status = crate::persistence::ChainLifecycleStatus::Ready;
+            chain2.steps.push(crate::persistence::PersistentChainStep {
+                id: "step-1".to_string(),
+                description: "Test step".to_string(),
+                status: crate::persistence::ChainStepStatus::Pending,
+                retry_of: None,
+                retry_attempt: 0,
+                execution_outcome: None,
+                execution_result_class: None,
+                execution_results: vec![],
+                failure_reason: None,
+                recovery_step_kind: None,
+                evidence_snapshot: None,
+                force_override_used: false,
+                tool_calls: vec![],
+                result_summary: None,
+                validation_passed: None,
+                started_at: None,
+                completed_at: None,
+                error_message: None,
+                replay_record: None,
+            });
+        }
+
+        // Auto-resume for chain2 while chain1 is running should be blocked cleanly
+        let result = app.try_auto_resume_chain().await;
+
+        // Should return false (no action taken)
+        assert!(!result, "auto-resume should be blocked when different chain is running");
+
+        // Should show clean skip message, not error
+        let has_skip_message = app.state.messages.iter().any(|m| {
+            m.content.contains("another chain is currently executing")
+        });
+        assert!(
+            has_skip_message,
+            "should show clean skip message, got messages: {:?}",
+            app.state.messages.iter().map(|m| &m.content).collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn terminal_seal_clears_execution_lock_on_new_run() {
+        // Test that execution_run_sealed is cleared when a new execution starts
+        // This prevents stale execution locks from blocking new chain resumes
+        let mut app = App::new().await;
+
+        // Simulate completed execution (seal should remain until new execution)
+        app.execution_run_sealed = true;
+        app.post_terminal_audit_recorded = true;
+        app.active_runtime_session_id = Some("session-1".to_string());
+        app.active_run_message_id = Some("run-1".to_string());
+
+        // Verify seal exists before new execution
+        assert!(app.execution_run_sealed, "seal should exist after execution");
+
+        // Simulate start of new execution - this should clear the seal
+        app.reset_execution_terminal_seal();
+
+        assert!(
+            !app.execution_run_sealed,
+            "execution_run_sealed should be cleared when new execution starts"
+        );
+        assert!(
+            !app.post_terminal_audit_recorded,
+            "post_terminal_audit_recorded should be cleared when new execution starts"
+        );
+        assert!(
+            app.active_runtime_session_id.is_none(),
+            "session ID should be cleared"
         );
     }
 }

@@ -915,10 +915,12 @@ fn draw_audit_tab(f: &mut Frame, app: &mut App, area: Rect) {
                     if event.step_id.is_some() || event.task.is_some() {
                         let mut context_parts = vec![];
                         if let Some(step) = &event.step_id {
-                            context_parts.push(format!("step={}", &step[..step.len().min(8)]));
+                            context_parts
+                                .push(format!("step={}", crate::text::take_chars(step, 8)));
                         }
                         if let Some(task) = &event.task {
-                            context_parts.push(format!("task=\"{}\"", &task[..task.len().min(30)]));
+                            context_parts
+                                .push(format!("task=\"{}\"", crate::text::take_chars(task, 30)));
                         }
                         lines.push(Line::from(vec![
                             Span::styled("       Context: ", Style::default().fg(colors::TEXT_DIM)),
@@ -1394,11 +1396,10 @@ fn draw_checkpoint_tab(f: &mut Frame, app: &mut App, area: Rect) {
         ));
         lines.push(detail_line(
             "Hash",
-            report
-                .workspace_hash
-                .as_deref()
-                .map(|hash| &hash[..hash.len().min(16)])
-                .unwrap_or("(none)"),
+            &report.workspace_hash.as_deref().map_or_else(
+                || "(none)".to_string(),
+                |hash| crate::text::take_chars(hash, 16),
+            ),
         ));
         lines.push(Line::from(""));
         lines.push(detail_line(
@@ -1451,6 +1452,55 @@ fn draw_preview_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let state = &app.state;
 
     let mut lines = vec![];
+
+    lines.push(Line::from(vec![Span::styled(
+        "Structured Results:",
+        Style::default()
+            .fg(colors::TEXT_MUTED)
+            .add_modifier(Modifier::BOLD),
+    )]));
+
+    if state.structured_outputs.is_empty() {
+        lines.push(Line::from(vec![Span::styled(
+            "  No structured output routed yet",
+            Style::default().fg(colors::TEXT_DIM),
+        )]));
+    } else {
+        for output in state.structured_outputs.iter().rev().take(3) {
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("  {} ", output.kind.label()),
+                    Style::default().fg(colors::ACCENT),
+                ),
+                Span::styled(
+                    crate::text::truncate_chars(&output.title, 72),
+                    Style::default().fg(colors::TEXT_SOFT),
+                ),
+            ]));
+            for content_line in output.content.lines().take(12) {
+                if content_line.trim().is_empty() {
+                    lines.push(Line::from(""));
+                } else {
+                    lines.push(Line::from(vec![
+                        Span::styled("    ", Style::default()),
+                        Span::styled(
+                            crate::text::truncate_chars(content_line, 96),
+                            Style::default().fg(colors::TEXT_MUTED),
+                        ),
+                    ]));
+                }
+            }
+            if output.content.lines().count() > 12 {
+                lines.push(Line::from(vec![Span::styled(
+                    "    ...",
+                    Style::default().fg(colors::TEXT_DIM),
+                )]));
+            }
+            lines.push(Line::from(""));
+        }
+    }
+
+    lines.push(Line::from(""));
 
     // Preview servers section
     lines.push(Line::from(vec![Span::styled(
@@ -1557,7 +1607,7 @@ fn draw_preview_tab(f: &mut Frame, app: &mut App, area: Rect) {
         .scroll((scroll_offset as u16, 0))
         .block(
             Block::default()
-                .title(" Browser Preview ")
+                .title(" Results / Preview ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(colors::BORDER_SUBTLE))
                 .style(Style::default().bg(colors::BG_PANEL)),

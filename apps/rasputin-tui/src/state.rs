@@ -154,6 +154,10 @@ impl ExecutionState {
             Self::Planning | Self::Executing | Self::Validating | Self::Repairing
         )
     }
+
+    pub fn from_runtime_success(success: bool) -> Self {
+        if success { Self::Done } else { Self::Failed }
+    }
 }
 
 /// V1.5 STATE MACHINE: Canonical progress state transition event
@@ -968,7 +972,13 @@ pub fn reduce_execution_state(
     }
 
     // Terminal outcome prevents any active state transitions
-    if has_terminal_outcome && !matches!(event, ProgressTransitionEvent::NewRun { .. }) {
+    if has_terminal_outcome
+        && !matches!(
+            event,
+            ProgressTransitionEvent::NewRun { .. }
+                | ProgressTransitionEvent::RuntimeFinished { .. }
+        )
+    {
         return TransitionResult::Rejected {
             current,
             reason: "terminal outcome set - cannot transition to active states",
@@ -1025,7 +1035,7 @@ pub fn reduce_execution_state(
             if *success {
                 TransitionResult::Applied(ExecutionState::Executing)
             } else {
-                TransitionResult::Applied(ExecutionState::Failed)
+                TransitionResult::Applied(ExecutionState::Executing)
             }
         }
         (ExecutionState::Executing, ProgressTransitionEvent::BrowserPreview) => {
@@ -1047,17 +1057,13 @@ pub fn reduce_execution_state(
             TransitionResult::Applied(ExecutionState::WaitingForApproval)
         }
         (ExecutionState::Executing, ProgressTransitionEvent::RuntimeFailure { .. }) => {
-            TransitionResult::Applied(ExecutionState::Failed)
+            TransitionResult::Applied(ExecutionState::Executing)
         }
         (ExecutionState::Executing, ProgressTransitionEvent::RuntimeFinished { success }) => {
-            if *success {
-                TransitionResult::Applied(ExecutionState::Done)
-            } else {
-                TransitionResult::Applied(ExecutionState::Failed)
-            }
+            TransitionResult::Applied(ExecutionState::from_runtime_success(*success))
         }
         (ExecutionState::Executing, ProgressTransitionEvent::CompletionGate) => {
-            TransitionResult::Applied(ExecutionState::Done)
+            TransitionResult::Applied(ExecutionState::Executing)
         }
         (ExecutionState::Executing, ProgressTransitionEvent::OperatorStopped) => {
             TransitionResult::Applied(ExecutionState::Blocked)
@@ -1074,7 +1080,7 @@ pub fn reduce_execution_state(
             if *accepted {
                 TransitionResult::Applied(ExecutionState::Validating)
             } else {
-                TransitionResult::Applied(ExecutionState::Failed)
+                TransitionResult::Applied(ExecutionState::Validating)
             }
         }
         (ExecutionState::Validating, ProgressTransitionEvent::ToolCalling { .. }) => {
@@ -1085,17 +1091,13 @@ pub fn reduce_execution_state(
             TransitionResult::Applied(ExecutionState::Repairing)
         }
         (ExecutionState::Validating, ProgressTransitionEvent::CompletionGate) => {
-            TransitionResult::Applied(ExecutionState::Done)
+            TransitionResult::Applied(ExecutionState::Validating)
         }
         (ExecutionState::Validating, ProgressTransitionEvent::RuntimeFinished { success }) => {
-            if *success {
-                TransitionResult::Applied(ExecutionState::Done)
-            } else {
-                TransitionResult::Applied(ExecutionState::Failed)
-            }
+            TransitionResult::Applied(ExecutionState::from_runtime_success(*success))
         }
         (ExecutionState::Validating, ProgressTransitionEvent::RuntimeFailure { .. }) => {
-            TransitionResult::Applied(ExecutionState::Failed)
+            TransitionResult::Applied(ExecutionState::Validating)
         }
 
         // Repairing is a specialized executing state
@@ -1112,7 +1114,7 @@ pub fn reduce_execution_state(
             TransitionResult::Applied(ExecutionState::Validating)
         }
         (ExecutionState::Repairing, ProgressTransitionEvent::RuntimeFailure { .. }) => {
-            TransitionResult::Applied(ExecutionState::Failed)
+            TransitionResult::Applied(ExecutionState::Repairing)
         }
 
         // WaitingForApproval is sticky - cannot be overwritten by running events
@@ -1142,11 +1144,7 @@ pub fn reduce_execution_state(
 
         // Responding is similar to executing
         (ExecutionState::Responding, ProgressTransitionEvent::RuntimeFinished { success }) => {
-            if *success {
-                TransitionResult::Applied(ExecutionState::Done)
-            } else {
-                TransitionResult::Applied(ExecutionState::Failed)
-            }
+            TransitionResult::Applied(ExecutionState::from_runtime_success(*success))
         }
         (ExecutionState::Responding, _) => {
             // Responding can transition to most states
@@ -1420,11 +1418,120 @@ pub enum RequiredSurface {
     Custom { description: String, check: String },
 }
 
+/// Explicit artifact-set contract for completion truth.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ArtifactCompletionContract {
+    /// Human-readable artifact type (e.g. "markdown").
+    pub artifact_type: Option<String>,
+    /// Exact required deliverable count when the task specified one.
+    pub required_count: Option<usize>,
+    /// Exact filenames or relative paths required by the task.
+    pub required_filenames: Vec<String>,
+    /// Structured required artifact metadata, including per-file purpose when present.
+    #[serde(default)]
+    pub required_artifacts: Vec<ArtifactRequirement>,
+    /// Required filenames currently present and non-empty.
+    #[serde(default)]
+    pub created_filenames: Vec<String>,
+    /// Required filenames not yet present.
+    #[serde(default)]
+    pub missing_filenames: Vec<String>,
+    /// Required filenames that exist but are empty/blank.
+    #[serde(default)]
+    pub empty_filenames: Vec<String>,
+    /// Produced filenames that do not belong to the explicit contract.
+    #[serde(default)]
+    pub unexpected_filenames: Vec<String>,
+    /// Count of produced artifacts attributed to this contract.
+    #[serde(default)]
+    pub actual_output_count: Option<usize>,
+    /// Whether every required file must be non-empty.
+    #[serde(default = "default_require_non_empty_artifacts")]
+    pub require_non_empty: bool,
+}
+
+/// Structured metadata for one required artifact in an explicit completion contract.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ArtifactRequirement {
+    /// Exact required filename or relative path.
+    pub path: String,
+    /// Purpose or content intent extracted from the prompt when present.
+    #[serde(default)]
+    pub purpose: Option<String>,
+}
+
+/// Artifact-oriented CRUD operation used when decomposing explicit deliverable work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ArtifactCrudOperation {
+    CreateMissing,
+    UpdateExisting,
+    ReplaceEmpty,
+    ListRequired,
+    CheckCompleteness,
+}
+
+impl ArtifactCrudOperation {
+    pub fn verb(self) -> &'static str {
+        match self {
+            Self::CreateMissing => "Create missing",
+            Self::UpdateExisting => "Update existing",
+            Self::ReplaceEmpty => "Replace empty",
+            Self::ListRequired => "List required",
+            Self::CheckCompleteness => "Check completeness",
+        }
+    }
+
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::CreateMissing => "write the required artifact when it does not exist yet",
+            Self::UpdateExisting => "edit an existing required artifact without changing the filename contract",
+            Self::ReplaceEmpty => "replace an empty required artifact with substantive content",
+            Self::ListRequired => "inventory the required artifact set and current filesystem state",
+            Self::CheckCompleteness => "validate that the full artifact contract is satisfied",
+        }
+    }
+}
+
+fn default_require_non_empty_artifacts() -> bool {
+    true
+}
+
+impl ArtifactCompletionContract {
+    pub fn required_deliverable_count(&self) -> usize {
+        self.required_count
+            .unwrap_or_else(|| self.required_filenames.len())
+    }
+
+    pub fn purpose_for_path(&self, path: &str) -> Option<&str> {
+        self.required_artifacts
+            .iter()
+            .find(|artifact| artifact.path == path)
+            .and_then(|artifact| artifact.purpose.as_deref())
+    }
+
+    pub fn is_satisfied(&self) -> bool {
+        self.missing_filenames.is_empty()
+            && self.empty_filenames.is_empty()
+            && self.unexpected_filenames.is_empty()
+            && self
+                .actual_output_count
+                .map(|count| count == self.required_deliverable_count())
+                .unwrap_or_else(|| self.created_filenames.len() == self.required_deliverable_count())
+    }
+
+    pub fn has_requirements(&self) -> bool {
+        !self.required_filenames.is_empty() || self.required_count.is_some()
+    }
+}
+
 /// Objective satisfaction check - what must be true for chain to be "done"
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ObjectiveSatisfaction {
     /// Required surfaces that must exist
     pub required_surfaces: Vec<RequiredSurface>,
+    /// Structured explicit artifact contract derived from the objective.
+    #[serde(default)]
+    pub artifact_contract: Option<ArtifactCompletionContract>,
     /// Minimum validation stage that must pass
     pub min_validation_stage: Option<String>,
     /// Objective-specific completion check
@@ -2131,7 +2238,7 @@ pub struct ExecutionTrace {
 impl ExecutionTrace {
     pub fn new() -> Self {
         Self {
-            mode: ExecutionMode::Chat,
+            mode: ExecutionMode::Task,
             state: ExecutionState::Idle,
             active_objective: None,
             last_action: "none".to_string(),
@@ -2326,6 +2433,45 @@ pub struct LogEntry {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StructuredOutputKind {
+    Objective,
+    Plan,
+    ArtifactManifest,
+    Audit,
+    Checkpoint,
+    Recovery,
+    Status,
+    Markdown,
+    Unknown,
+}
+
+impl StructuredOutputKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Objective => "Objective",
+            Self::Plan => "Plan",
+            Self::ArtifactManifest => "Artifact",
+            Self::Audit => "Audit",
+            Self::Checkpoint => "Checkpoint",
+            Self::Recovery => "Recovery",
+            Self::Status => "Status",
+            Self::Markdown => "Markdown",
+            Self::Unknown => "Structured",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StructuredOutput {
+    pub id: String,
+    pub kind: StructuredOutputKind,
+    pub title: String,
+    pub source: String,
+    pub content: String,
+    pub timestamp: DateTime<Local>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevel {
     Debug, // Reserved for detailed debugging output
@@ -2377,6 +2523,7 @@ pub struct AppState {
     pub runtime_events: Vec<RuntimeEvent>,
     pub validation_stages: Vec<ValidationStage>,
     pub logs: Vec<LogEntry>,
+    pub structured_outputs: Vec<StructuredOutput>,
     pub active_inspector_tab: InspectorTab,
 
     // Scroll positions for inspector tabs (preserved across renders)
@@ -2416,6 +2563,8 @@ pub struct AppState {
     // Chain execution tracking
     pub current_chain_id: Option<String>,
     pub current_chain_step_id: Option<String>,
+    // V2.5: When current chain started (for cooldown in auto-resume)
+    pub current_chain_start_time: Option<DateTime<Local>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2525,6 +2674,7 @@ impl AppState {
             runtime_events: vec![],
             validation_stages: default_validation_stages(),
             logs: vec![],
+            structured_outputs: vec![],
             active_inspector_tab: InspectorTab::Runtime,
 
             // Scroll positions initialized to top
@@ -2564,6 +2714,7 @@ impl AppState {
             // Chain execution tracking - initialized to None
             current_chain_id: None,
             current_chain_step_id: None,
+            current_chain_start_time: None,
         }
     }
 

@@ -4,7 +4,12 @@
 //! Every state produces context-aware recommendations.
 
 use crate::persistence::{ChainLifecycleStatus, ExecutionOutcome, PersistentState};
-use crate::state::AppState;
+use crate::state::{
+    AppState, ArtifactCompletionContract, ArtifactCrudOperation, ArtifactRequirement,
+    ObjectiveSatisfaction, RequiredSurface,
+};
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 /// Priority level for recommended actions
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1902,6 +1907,8 @@ impl Goal {
 /// A generated plan with full explanation
 #[derive(Debug, Clone)]
 pub struct GeneratedPlan {
+    /// Full original task prompt, preserved verbatim for execution grounding.
+    pub raw_prompt: String,
     /// Objective summary (derived from goal)
     pub objective: String,
     /// Ordered steps to execute
@@ -2196,7 +2203,8 @@ impl LiteralCreationIntent {
         );
 
         GeneratedPlan {
-            objective: original_statement.to_string(),
+            raw_prompt: original_statement.to_string(),
+            objective: summarize_goal_objective(original_statement),
             steps: vec![
                 PlanStep {
                     number: 1,
@@ -2228,7 +2236,422 @@ impl LiteralCreationIntent {
     }
 }
 
+pub fn extract_explicit_artifact_contract(statement: &str) -> Option<ArtifactCompletionContract> {
+    let required_artifacts = extract_explicit_artifact_requirements(statement);
+    let required_filenames = required_artifacts
+        .iter()
+        .map(|artifact| artifact.path.clone())
+        .collect::<Vec<_>>();
+    let required_count = detect_explicit_artifact_count(statement).or_else(|| {
+        if required_filenames.len() > 1 {
+            Some(required_filenames.len())
+        } else {
+            None
+        }
+    });
+
+    let lower = statement.to_lowercase();
+    let numbered_filename_lines = statement
+        .lines()
+        .filter(|line| line_contains_numbered_filename(line))
+        .count();
+    let has_contract_language = lower.contains("exactly")
+        || lower.contains("precise filenames")
+        || lower.contains("exact filenames")
+        || lower.contains("all of these")
+        || lower.contains("all of the following")
+        || lower.contains("must be produced")
+        || lower.contains("must produce")
+        || lower.contains("deliverable set")
+        || lower.contains("named markdown files")
+        || lower.contains("required files")
+        || lower.contains("required artifacts");
+
+    let is_explicit_contract = required_filenames.len() > 1
+        && (required_count.is_some() || has_contract_language || numbered_filename_lines >= 2);
+    if !is_explicit_contract {
+        return None;
+    }
+
+    Some(ArtifactCompletionContract {
+        artifact_type: detect_artifact_type(statement, &required_filenames),
+        required_count,
+        required_filenames,
+        required_artifacts,
+        created_filenames: vec![],
+        missing_filenames: vec![],
+        empty_filenames: vec![],
+        unexpected_filenames: vec![],
+        actual_output_count: None,
+        require_non_empty: true,
+    })
+}
+
+/// Extract objective from task/action sections, excluding completion rules and validation sections.
+/// This prevents "DONE means..." completion rules from being selected as the objective.
+fn extract_objective_from_sections(statement: &str) -> Option<String> {
+    let lines: Vec<&str> = statement.lines().collect();
+    let _lower_statement = statement.to_lowercase();
+
+    // Section header patterns that indicate task/objective sections (in priority order)
+    let task_section_headers: &[&str] = &[
+        "your task is",
+        "task:",
+        "objective:",
+        "goal:",
+        "mission:",
+        "assignment:",
+        "action required",
+        "what you must do",
+        "create or update",
+        "produce exactly",
+        "generate exactly",
+        "implement",
+        "build",
+    ];
+
+    // Section header patterns that indicate completion/validation sections (to exclude)
+    let completion_section_headers: &[&str] = &[
+        "done means",
+        "completion rule",
+        "completion criteria",
+        "validation:",
+        "validate:",
+        "requirements:",
+        "constraints:",
+        "final instruction",
+        "output contract",
+        "success criteria",
+        "verification:",
+        "checklist:",
+    ];
+
+    // First, try to find an explicit task/objective section
+    for (idx, line) in lines.iter().enumerate() {
+        let lower_line = line.to_lowercase();
+
+        // Check if this line starts a task section
+        let is_task_header = task_section_headers
+            .iter()
+            .any(|header| lower_line.starts_with(header) || lower_line.contains(header));
+
+        if is_task_header {
+            // Extract content from this header line (after the colon if present)
+            let content = if let Some(pos) = line.find(':') {
+                line[pos + 1..].trim()
+            } else {
+                line.trim()
+            };
+
+            if !content.is_empty() && !is_completion_rule_line(content) {
+                return Some(content.to_string());
+            }
+
+            // If header line is empty after colon, look at next lines
+            for next_line in lines.iter().skip(idx + 1).take(3) {
+                let trimmed = next_line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                // Stop if we hit another section header
+                let lower_next = trimmed.to_lowercase();
+                if task_section_headers.iter().any(|h| lower_next.starts_with(h))
+                    || completion_section_headers
+                        .iter()
+                        .any(|h| lower_next.starts_with(h))
+                {
+                    break;
+                }
+                if !is_completion_rule_line(trimmed) {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    // Second pass: look for imperative sentences that indicate the objective
+    for line in lines.iter() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        // Skip completion rule lines
+        if is_completion_rule_line(trimmed) {
+            continue;
+        }
+
+        let lower = trimmed.to_lowercase();
+
+        // Look for action-oriented beginnings
+        let action_prefixes = [
+            "create ",
+            "update ",
+            "modify ",
+            "implement ",
+            "build ",
+            "generate ",
+            "produce ",
+            "write ",
+            "refactor ",
+            "fix ",
+            "add ",
+        ];
+
+        if action_prefixes.iter().any(|prefix| lower.starts_with(prefix)) {
+            // Check this isn't just a file list item
+            if !trimmed.starts_with(|c: char| c.is_ascii_digit() && trimmed.contains('.')) {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+
+    None
+}
+
+/// Check if a line is a completion rule (not suitable as objective)
+pub(crate) fn is_completion_rule_line(line: &str) -> bool {
+    let lower = line.to_lowercase();
+    let completion_indicators = [
+        "done means",
+        "success means",
+        "complete when",
+        "finished when",
+        "validation:",
+        "verify that",
+        "ensure that",
+        "all tests pass",
+        "file(s) exist",
+        "exists and",
+        "must exist",
+        "required files",
+    ];
+
+    completion_indicators
+        .iter()
+        .any(|indicator| lower.contains(indicator))
+}
+
+pub fn summarize_goal_objective(statement: &str) -> String {
+    if let Some(contract) = extract_explicit_artifact_contract(statement)
+        && contract.has_requirements()
+    {
+        let artifact_label = contract
+            .artifact_type
+            .clone()
+            .unwrap_or_else(|| "artifact".to_string());
+        let mentions_purposes = contract
+            .required_artifacts
+            .iter()
+            .any(|artifact| artifact.purpose.is_some());
+        let suffix = if mentions_purposes {
+            " and purposes"
+        } else {
+            ""
+        };
+        return format!(
+            "Generate exactly {} {} file(s) with the specified filenames{}",
+            contract.required_deliverable_count(),
+            artifact_label,
+            suffix
+        );
+    }
+
+    if let Some(intent) = LiteralCreationIntent::detect(statement) {
+        return format!(
+            "Create {} at {}",
+            intent.artifact_class, intent.target_path
+        );
+    }
+
+    // Use section-aware extraction to find the objective
+    if let Some(objective) = extract_objective_from_sections(statement) {
+        let collapsed = objective.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !collapsed.is_empty() && !is_vague_objective_summary(&collapsed) {
+            return crate::text::truncate_chars(&collapsed, 120);
+        }
+    }
+
+    // Fallback: find first non-empty, non-completion-rule line
+    let first_valid_line = statement
+        .lines()
+        .map(str::trim)
+        .find(|line| {
+            !line.is_empty()
+                && !is_completion_rule_line(line)
+                && !line.starts_with(|c: char| c == '#' || c == '-' || c == '*')
+        })
+        .unwrap_or(statement);
+
+    let collapsed = first_valid_line.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        "Execute requested task".to_string()
+    } else {
+        crate::text::truncate_chars(&collapsed, 120)
+    }
+}
+
+pub fn is_vague_objective_summary(summary: &str) -> bool {
+    let normalized = summary
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let vague_phrases = [
+        "begin your analysis now",
+        "analyze goal requirements",
+        "analyze requirements",
+        "start analysis",
+        "execute implementation",
+        "perform the task",
+        "work on the task",
+    ];
+
+    vague_phrases
+        .iter()
+        .any(|phrase| normalized == *phrase || normalized.contains(phrase))
+}
+
+pub fn build_objective_satisfaction(statement: &str) -> ObjectiveSatisfaction {
+    let artifact_contract = extract_explicit_artifact_contract(statement);
+    let required_surfaces = artifact_contract
+        .as_ref()
+        .map(|contract| {
+            contract
+                .required_filenames
+                .iter()
+                .cloned()
+                .map(|path| RequiredSurface::FileExists { path })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let reason = artifact_contract.as_ref().map(|contract| {
+        format!(
+            "Explicit deliverable contract extracted: {} required artifact(s).",
+            contract.required_deliverable_count()
+        )
+    });
+
+    ObjectiveSatisfaction {
+        required_surfaces,
+        artifact_contract,
+        reason,
+        ..Default::default()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct ArtifactCrudPlanState {
+    existing_required_filenames: Vec<String>,
+    missing_filenames: Vec<String>,
+    empty_filenames: Vec<String>,
+}
+
+impl ArtifactCrudPlanState {
+    fn operation_for_path(&self, path: &str) -> ArtifactCrudOperation {
+        if self.empty_filenames.iter().any(|candidate| candidate == path) {
+            ArtifactCrudOperation::ReplaceEmpty
+        } else if self
+            .existing_required_filenames
+            .iter()
+            .any(|candidate| candidate == path)
+        {
+            ArtifactCrudOperation::UpdateExisting
+        } else {
+            ArtifactCrudOperation::CreateMissing
+        }
+    }
+}
+
 impl PlanEngine {
+    pub fn generate_explicit_artifact_plan(
+        goal: &Goal,
+        repo_path: Option<&str>,
+    ) -> Option<GeneratedPlan> {
+        let contract = extract_explicit_artifact_contract(&goal.statement)?;
+        if contract.required_deliverable_count() <= 1 {
+            return None;
+        }
+
+        let artifact_state = snapshot_artifact_plan_state(&contract, repo_path);
+        let artifact_label = contract
+            .artifact_type
+            .clone()
+            .unwrap_or_else(|| "artifact".to_string());
+        let mut steps = Vec::with_capacity(contract.required_filenames.len() + 2);
+        let all_targets = contract.required_filenames.clone();
+
+        steps.push(PlanStep {
+            number: 1,
+            description: format!(
+                "{} the explicit deliverable contract for {} {} artifact(s), inventory the required set, and keep the exact filename list authoritative. Current state: {} existing, {} missing, {} empty.",
+                ArtifactCrudOperation::ListRequired.verb(),
+                contract.required_deliverable_count(),
+                artifact_label,
+                artifact_state.existing_required_filenames.len(),
+                artifact_state.missing_filenames.len(),
+                artifact_state.empty_filenames.len()
+            ),
+            action_type: StepActionType::Read,
+            risk_level: RiskLevel::Safe,
+            likely_approval_needed: false,
+            affected_files: all_targets.clone(),
+        });
+
+        for path in &contract.required_filenames {
+            let operation = artifact_state.operation_for_path(path);
+            let purpose_clause = contract
+                .purpose_for_path(path)
+                .map(|purpose| format!(" Required purpose: {}.", purpose))
+                .unwrap_or_default();
+            steps.push(PlanStep {
+                number: steps.len() + 1,
+                description: format!(
+                    "{} required {} artifact {} and satisfy the exact filename contract with non-empty content. Operation intent: {}.{}",
+                    operation.verb(),
+                    artifact_label,
+                    path,
+                    operation.description(),
+                    purpose_clause
+                ),
+                action_type: StepActionType::Write,
+                risk_level: RiskLevel::Safe,
+                likely_approval_needed: false,
+                affected_files: vec![path.clone()],
+            });
+        }
+
+        steps.push(PlanStep {
+            number: steps.len() + 1,
+            description: format!(
+                "{} for the full deliverable contract: all {} required {} artifact(s) must exist, be non-empty, and the task cannot finish while any required filename is missing.",
+                ArtifactCrudOperation::CheckCompleteness.verb(),
+                contract.required_deliverable_count(),
+                artifact_label
+            ),
+            action_type: StepActionType::Validate,
+            risk_level: RiskLevel::Safe,
+            likely_approval_needed: false,
+            affected_files: all_targets.clone(),
+        });
+
+        Some(GeneratedPlan {
+            raw_prompt: goal.statement.clone(),
+            objective: summarize_goal_objective(&goal.statement),
+            steps,
+            risks: vec![],
+            approval_points: vec![],
+            required_context: all_targets,
+            estimated_outcome: OutcomePrediction::Success,
+            safe_to_chain: true,
+            reasoning: format!(
+                "Detected an explicit multi-artifact deliverable contract with {} exact filename(s); the plan decomposes work per required artifact, applies artifact CRUD semantics (create missing, update existing, replace empty, list required, check completeness), and defers completion until the full set is present.",
+                contract.required_deliverable_count(),
+            ),
+        })
+    }
+
     pub fn generate_literal_creation(goal: &Goal) -> Option<GeneratedPlan> {
         LiteralCreationIntent::detect(&goal.statement).map(|intent| intent.to_plan(&goal.statement))
     }
@@ -2242,6 +2665,16 @@ impl PlanEngine {
         state: &AppState,
         persistence: &PersistentState,
     ) -> PlanGenerationResult {
+        let repo_path = if state.repo.path.trim().is_empty() {
+            persistence.active_repo.as_deref()
+        } else {
+            Some(state.repo.path.as_str())
+        };
+
+        if let Some(plan) = Self::generate_explicit_artifact_plan(goal, repo_path) {
+            return PlanGenerationResult::Success(plan);
+        }
+
         if let Some(plan) = Self::generate_literal_creation(goal) {
             return PlanGenerationResult::Success(plan);
         }
@@ -2286,7 +2719,8 @@ impl PlanEngine {
         let required_context: Vec<String> = unique_files.into_iter().collect();
 
         PlanGenerationResult::Success(GeneratedPlan {
-            objective: goal.statement.clone(),
+            raw_prompt: goal.statement.clone(),
+            objective: summarize_goal_objective(&goal.statement),
             steps,
             risks,
             approval_points,
@@ -2605,6 +3039,325 @@ fn normalize_intent_text(statement: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn detect_explicit_artifact_count(statement: &str) -> Option<usize> {
+    let normalized = normalize_intent_text(statement);
+    let words: Vec<&str> = normalized.split_whitespace().collect();
+
+    for (idx, word) in words.iter().enumerate() {
+        let Some(count) = parse_count_word(word) else {
+            continue;
+        };
+        let previous = idx
+            .checked_sub(1)
+            .and_then(|offset| words.get(offset))
+            .copied()
+            .unwrap_or_default();
+        let next = words.get(idx + 1).copied().unwrap_or_default();
+        let next_two = words.get(idx + 2).copied().unwrap_or_default();
+
+        if matches!(
+            previous,
+            "exactly" | "precisely" | "total" | "produce" | "creating"
+        ) || matches!(
+            next,
+            "artifact" | "artifacts" | "doc" | "docs" | "document" | "documents" | "file"
+                | "files" | "markdown"
+        ) || matches!(
+            next_two,
+            "artifact" | "artifacts" | "doc" | "docs" | "document" | "documents" | "file"
+                | "files" | "markdown"
+        ) {
+            return Some(count);
+        }
+    }
+
+    None
+}
+
+fn parse_count_word(word: &str) -> Option<usize> {
+    if let Ok(value) = word.parse::<usize>() {
+        return Some(value);
+    }
+
+    match word {
+        "one" => Some(1),
+        "two" => Some(2),
+        "three" => Some(3),
+        "four" => Some(4),
+        "five" => Some(5),
+        "six" => Some(6),
+        "seven" => Some(7),
+        "eight" => Some(8),
+        "nine" => Some(9),
+        "ten" => Some(10),
+        "eleven" => Some(11),
+        "twelve" => Some(12),
+        "thirteen" => Some(13),
+        "fourteen" => Some(14),
+        "fifteen" => Some(15),
+        "sixteen" => Some(16),
+        "seventeen" => Some(17),
+        "eighteen" => Some(18),
+        "nineteen" => Some(19),
+        "twenty" => Some(20),
+        _ => None,
+    }
+}
+
+fn extract_explicit_filenames(statement: &str) -> Vec<String> {
+    extract_explicit_artifact_requirements(statement)
+        .into_iter()
+        .map(|artifact| artifact.path)
+        .collect()
+}
+
+fn extract_explicit_artifact_requirements(statement: &str) -> Vec<ArtifactRequirement> {
+    let lines: Vec<&str> = statement.lines().collect();
+    let mut requirements = Vec::new();
+    let mut seen = HashSet::new();
+
+    for (index, line) in lines.iter().enumerate() {
+        for candidate in extract_filename_candidates_from_line(line) {
+            if seen.insert(candidate.clone()) {
+                requirements.push(ArtifactRequirement {
+                    path: candidate.clone(),
+                    purpose: extract_artifact_requirement_purpose(&lines, index, &candidate),
+                });
+            }
+        }
+    }
+
+    requirements
+}
+
+fn extract_artifact_requirement_purpose(
+    lines: &[&str],
+    line_index: usize,
+    path: &str,
+) -> Option<String> {
+    let line = lines.get(line_index)?.trim();
+    if let Some(start) = line.find(path) {
+        let trailing = &line[start + path.len()..];
+        if let Some(purpose) = normalize_artifact_purpose(trailing) {
+            return Some(purpose);
+        }
+    }
+
+    let mut continuation = Vec::new();
+    for next_line in lines.iter().skip(line_index + 1) {
+        let trimmed = next_line.trim();
+        if trimmed.is_empty() {
+            break;
+        }
+        if !extract_filename_candidates_from_line(trimmed).is_empty() {
+            break;
+        }
+
+        if next_line
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_whitespace())
+            || trimmed.starts_with('-')
+            || trimmed.starts_with('*')
+            || trimmed.starts_with('•')
+            || trimmed.starts_with("Purpose")
+            || trimmed.starts_with("purpose")
+            || trimmed.starts_with("Focus")
+            || trimmed.starts_with("focus")
+            || trimmed.starts_with("Include")
+            || trimmed.starts_with("include")
+        {
+            continuation.push(trimmed.to_string());
+        } else {
+            break;
+        }
+
+        if continuation.len() >= 3 {
+            break;
+        }
+    }
+
+    if continuation.is_empty() {
+        None
+    } else {
+        normalize_artifact_purpose(&continuation.join(" "))
+    }
+}
+
+fn normalize_artifact_purpose(fragment: &str) -> Option<String> {
+    let cleaned = fragment
+        .trim()
+        .trim_start_matches(|ch: char| matches!(ch, '-' | ':' | '–' | '—' | ';' | ',' | '|'))
+        .trim();
+    if cleaned.is_empty() {
+        return None;
+    }
+
+    let collapsed = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    let lower = collapsed.to_lowercase();
+    if lower.starts_with("all of these")
+        || lower.starts_with("all of the following")
+        || lower.starts_with("must be produced")
+    {
+        None
+    } else {
+        Some(collapsed)
+    }
+}
+
+fn line_contains_numbered_filename(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let Some((prefix, remainder)) = trimmed.split_once('.') else {
+        return false;
+    };
+    if !prefix.chars().all(|ch| ch.is_ascii_digit()) {
+        return false;
+    }
+
+    !extract_filename_candidates_from_line(remainder).is_empty()
+}
+
+fn extract_filename_candidates_from_line(line: &str) -> Vec<String> {
+    let mut candidates = Vec::new();
+    let mut trimmed = line.trim();
+
+    while matches!(trimmed.chars().next(), Some('#' | '-' | '*' | '•')) {
+        trimmed = trimmed[1..].trim_start();
+    }
+
+    if let Some((prefix, remainder)) = trimmed.split_once('.') {
+        if prefix.chars().all(|ch| ch.is_ascii_digit()) {
+            trimmed = remainder.trim_start();
+        }
+    }
+
+    if let Some((prefix, remainder)) = trimmed.split_once(')') {
+        if prefix.chars().all(|ch| ch.is_ascii_digit()) {
+            trimmed = remainder.trim_start();
+        }
+    }
+
+    for token in trimmed.split_whitespace() {
+        let candidate = normalize_artifact_token(token);
+        if looks_like_filename(&candidate) {
+            candidates.push(candidate);
+        }
+    }
+
+    candidates
+}
+
+fn normalize_artifact_token(token: &str) -> String {
+    token
+        .trim()
+        .trim_matches(|ch: char| {
+            ch.is_whitespace()
+                || matches!(
+                    ch,
+                    '`' | '"' | '\'' | ',' | ';' | ':' | '(' | ')' | '[' | ']' | '{' | '}'
+                )
+        })
+        .trim_start_matches("./")
+        .replace('\\', "/")
+}
+
+fn looks_like_filename(candidate: &str) -> bool {
+    if candidate.is_empty()
+        || candidate.starts_with("http://")
+        || candidate.starts_with("https://")
+        || candidate.starts_with('/')
+        || !candidate.contains('.')
+    {
+        return false;
+    }
+
+    let Some((stem, extension)) = candidate.rsplit_once('.') else {
+        return false;
+    };
+    if stem.is_empty()
+        || extension.len() < 2
+        || extension.len() > 10
+        || !extension.chars().all(|ch| ch.is_ascii_alphanumeric())
+        || !stem.chars().any(|ch| ch.is_ascii_alphabetic())
+    {
+        return false;
+    }
+
+    candidate.chars().all(|ch| {
+        ch.is_ascii_alphanumeric() || matches!(ch, '/' | '_' | '-' | '.')
+    })
+}
+
+fn detect_artifact_type(statement: &str, required_filenames: &[String]) -> Option<String> {
+    let lower = statement.to_lowercase();
+    if lower.contains("markdown") {
+        return Some("markdown".to_string());
+    }
+
+    if required_filenames.is_empty() {
+        return None;
+    }
+
+    if required_filenames
+        .iter()
+        .all(|path| path.ends_with(".md") || path.ends_with(".markdown"))
+    {
+        Some("markdown".to_string())
+    } else if required_filenames.iter().all(|path| path.ends_with(".json")) {
+        Some("json".to_string())
+    } else if required_filenames.iter().all(|path| path.ends_with(".txt")) {
+        Some("text".to_string())
+    } else {
+        required_filenames[0]
+            .rsplit_once('.')
+            .map(|(_, extension)| extension.to_string())
+    }
+}
+
+fn snapshot_artifact_plan_state(
+    contract: &ArtifactCompletionContract,
+    repo_path: Option<&str>,
+) -> ArtifactCrudPlanState {
+    let mut state = ArtifactCrudPlanState::default();
+
+    for path in &contract.required_filenames {
+        let resolved = resolve_contract_path(repo_path, path);
+        if !resolved.exists() {
+            state.missing_filenames.push(path.clone());
+            continue;
+        }
+
+        if contract.require_non_empty && !path_has_content(&resolved) {
+            state.empty_filenames.push(path.clone());
+        } else {
+            state.existing_required_filenames.push(path.clone());
+        }
+    }
+
+    state
+}
+
+fn resolve_contract_path(repo_path: Option<&str>, path: &str) -> PathBuf {
+    let path_ref = Path::new(path);
+    if path_ref.is_absolute() {
+        path_ref.to_path_buf()
+    } else if let Some(repo_path) = repo_path.filter(|value| !value.trim().is_empty()) {
+        Path::new(repo_path).join(path_ref)
+    } else {
+        path_ref.to_path_buf()
+    }
+}
+
+fn path_has_content(path: &Path) -> bool {
+    if let Ok(content) = std::fs::read_to_string(path) {
+        return !content.trim().is_empty();
+    }
+
+    std::fs::metadata(path)
+        .map(|metadata| metadata.len() > 0)
+        .unwrap_or(false)
 }
 
 fn requires_full_planning(statement: &str) -> bool {
@@ -4036,6 +4789,7 @@ impl ChainStatusDisplay for crate::persistence::PersistentChain {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     fn literal_plan(statement: &str) -> GeneratedPlan {
         let goal = Goal::new(statement, "test-conversation");
@@ -4099,6 +4853,190 @@ mod tests {
     }
 
     #[test]
+    fn extracts_numbered_markdown_filename_contract() {
+        let statement = "Produce exactly 15 markdown files.\n\
+1. docs/01_PROJECT_OVERVIEW.md\n\
+2. docs/02_ARCHITECTURE.md\n\
+3. docs/03_TECHNOLOGY_STACK.md\n\
+4. docs/04_CORE_CONCEPTS.md\n\
+5. docs/05_FOLDER_STRUCTURE.md\n\
+6. docs/06_MAIN_WORKFLOWS.md\n\
+7. docs/07_API_REFERENCE.md\n\
+8. docs/08_DATA_MODEL.md\n\
+9. docs/09_CONFIGURATION.md\n\
+10. docs/10_DEVELOPMENT_GUIDE.md\n\
+11. docs/11_TESTING_STRATEGY.md\n\
+12. docs/12_DEPLOYMENT_AND_OPERATIONS.md\n\
+13. docs/13_SECURITY_AND_COMPLIANCE.md\n\
+14. docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md\n\
+15. docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md\n\
+All of these must be produced.";
+
+        let contract =
+            extract_explicit_artifact_contract(statement).expect("explicit contract detected");
+
+        assert_eq!(contract.artifact_type.as_deref(), Some("markdown"));
+        assert_eq!(contract.required_count, Some(15));
+        assert_eq!(contract.required_filenames.len(), 15);
+        assert_eq!(
+            contract.required_filenames.first().map(String::as_str),
+            Some("docs/01_PROJECT_OVERVIEW.md")
+        );
+        assert_eq!(
+            contract.required_filenames.last().map(String::as_str),
+            Some("docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md")
+        );
+    }
+
+    #[test]
+    fn explicit_artifact_plan_decomposes_each_required_file() {
+        let statement = "Create exactly 15 markdown files with these precise filenames:\n\
+1. docs/01_PROJECT_OVERVIEW.md\n\
+2. docs/02_ARCHITECTURE.md\n\
+3. docs/03_TECHNOLOGY_STACK.md\n\
+4. docs/04_CORE_CONCEPTS.md\n\
+5. docs/05_FOLDER_STRUCTURE.md\n\
+6. docs/06_MAIN_WORKFLOWS.md\n\
+7. docs/07_API_REFERENCE.md\n\
+8. docs/08_DATA_MODEL.md\n\
+9. docs/09_CONFIGURATION.md\n\
+10. docs/10_DEVELOPMENT_GUIDE.md\n\
+11. docs/11_TESTING_STRATEGY.md\n\
+12. docs/12_DEPLOYMENT_AND_OPERATIONS.md\n\
+13. docs/13_SECURITY_AND_COMPLIANCE.md\n\
+14. docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md\n\
+15. docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md";
+        let goal = Goal::new(statement, "test-conversation");
+        let plan = PlanEngine::generate_explicit_artifact_plan(&goal, None)
+            .expect("explicit artifact plan generated");
+
+        assert_eq!(plan.steps.len(), 17);
+        assert_eq!(plan.steps[0].action_type, StepActionType::Read);
+        assert_eq!(
+            plan.steps.last().map(|step| step.action_type),
+            Some(StepActionType::Validate)
+        );
+        assert!(plan.required_context.contains(&"docs/01_PROJECT_OVERVIEW.md".to_string()));
+        assert!(plan.steps.iter().any(|step| {
+            step.description
+                .contains("docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md")
+                && step.action_type == StepActionType::Write
+        }));
+        assert!(
+            plan.reasoning.contains("artifact CRUD semantics"),
+            "reasoning should explain why the plan is decomposed"
+        );
+    }
+
+    #[test]
+    fn explicit_artifact_plan_uses_create_update_and_replace_semantics() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::create_dir_all(temp.path().join("docs")).expect("docs dir");
+        fs::write(
+            temp.path().join("docs/01_PROJECT_OVERVIEW.md"),
+            "# existing overview\n",
+        )
+        .expect("existing file");
+        fs::write(temp.path().join("docs/02_ARCHITECTURE.md"), "   ").expect("empty file");
+
+        let statement = "Create exactly 3 markdown files with these precise filenames:\n\
+1. docs/01_PROJECT_OVERVIEW.md\n\
+2. docs/02_ARCHITECTURE.md\n\
+3. docs/03_TECHNOLOGY_STACK.md";
+        let goal = Goal::new(statement, "test-conversation");
+        let plan = PlanEngine::generate_explicit_artifact_plan(
+            &goal,
+            Some(temp.path().to_string_lossy().as_ref()),
+        )
+        .expect("explicit artifact plan generated");
+
+        assert!(plan.steps.iter().any(|step| {
+            step.description.contains("Update existing required markdown artifact docs/01_PROJECT_OVERVIEW.md")
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.description.contains("Replace empty required markdown artifact docs/02_ARCHITECTURE.md")
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.description.contains("Create missing required markdown artifact docs/03_TECHNOLOGY_STACK.md")
+        }));
+        assert!(
+            plan.steps[0]
+                .description
+                .contains("Current state: 1 existing, 1 missing, 1 empty"),
+            "inventory step should report current CRUD state"
+        );
+    }
+
+    #[test]
+    fn objective_summary_and_raw_prompt_are_preserved_for_large_contracts() {
+        let statement = "Create exactly 15 markdown files with these precise filenames:\n\
+1. docs/01_PROJECT_OVERVIEW.md\n\
+2. docs/02_ARCHITECTURE.md\n\
+3. docs/03_TECHNOLOGY_STACK.md\n\
+4. docs/04_CORE_CONCEPTS.md\n\
+5. docs/05_FOLDER_STRUCTURE.md\n\
+6. docs/06_MAIN_WORKFLOWS.md\n\
+7. docs/07_API_REFERENCE.md\n\
+8. docs/08_DATA_MODEL.md\n\
+9. docs/09_CONFIGURATION.md\n\
+10. docs/10_DEVELOPMENT_GUIDE.md\n\
+11. docs/11_TESTING_STRATEGY.md\n\
+12. docs/12_DEPLOYMENT_AND_OPERATIONS.md\n\
+13. docs/13_SECURITY_AND_COMPLIANCE.md\n\
+14. docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md\n\
+15. docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md\n\
+All of these must be produced.";
+        let goal = Goal::new(statement, "test-conversation");
+        let plan = PlanEngine::generate_explicit_artifact_plan(&goal, None)
+            .expect("explicit artifact plan generated");
+
+        assert_eq!(plan.raw_prompt, statement);
+        assert_eq!(
+            plan.objective,
+            "Generate exactly 15 markdown file(s) with the specified filenames"
+        );
+        assert!(!is_vague_objective_summary(&plan.objective));
+    }
+
+    #[test]
+    fn extracts_filename_purposes_from_numbered_contract_lines() {
+        let statement = "Create exactly 2 markdown files:\n\
+1. docs/01_PROJECT_OVERVIEW.md - explain the product scope, operators, and outcomes.\n\
+2. docs/02_ARCHITECTURE.md: describe the runtime architecture, boundaries, and critical flows.\n\
+All of these must be produced.";
+
+        let contract =
+            extract_explicit_artifact_contract(statement).expect("explicit contract detected");
+
+        assert_eq!(
+            contract.purpose_for_path("docs/01_PROJECT_OVERVIEW.md"),
+            Some("explain the product scope, operators, and outcomes.")
+        );
+        assert_eq!(
+            contract.purpose_for_path("docs/02_ARCHITECTURE.md"),
+            Some("describe the runtime architecture, boundaries, and critical flows.")
+        );
+    }
+
+    #[test]
+    fn explicit_artifact_plan_carries_required_file_purpose_into_step_description() {
+        let statement = "Create exactly 2 markdown files:\n\
+1. docs/01_PROJECT_OVERVIEW.md - explain the product scope, operators, and outcomes.\n\
+2. docs/02_ARCHITECTURE.md: describe the runtime architecture, boundaries, and critical flows.\n\
+All of these must be produced.";
+        let goal = Goal::new(statement, "test-conversation");
+        let plan = PlanEngine::generate_explicit_artifact_plan(&goal, None)
+            .expect("explicit artifact plan generated");
+
+        assert!(plan.steps.iter().any(|step| {
+            step.description.contains("docs/01_PROJECT_OVERVIEW.md")
+                && step
+                    .description
+                    .contains("Required purpose: explain the product scope, operators, and outcomes.")
+        }));
+    }
+
+    #[test]
     fn literal_creation_plan_for_tiny_docs_note_file() {
         let plan = literal_plan("create a tiny docs note file");
 
@@ -4149,5 +5087,127 @@ mod tests {
         ] {
             assert_full_planning_route(statement);
         }
+    }
+
+    // ============================================================================
+    // REGRESSION TESTS: Objective extraction and completion rule handling
+    // ============================================================================
+
+    #[test]
+    fn objective_extraction_prefers_task_section_over_completion_rule() {
+        // Regression test: 15-doc prompt should extract task objective, not "DONE means..."
+        let prompt = "Your task is to create/update exactly 15 canonical Markdown files inside docs/.\n\n\
+1. docs/01_PROJECT_OVERVIEW.md\n\
+2. docs/02_ARCHITECTURE.md\n\n\
+DONE means all 15 docs exist and are non-empty.";
+
+        let objective = summarize_goal_objective(prompt);
+
+        // Should contain the task, not the completion rule
+        assert!(
+            objective.to_lowercase().contains("markdown") || objective.contains("15"),
+            "objective should contain task description, got: {}",
+            objective
+        );
+        assert!(
+            !objective.to_lowercase().contains("done means"),
+            "objective should NOT contain completion rule 'DONE means', got: {}",
+            objective
+        );
+    }
+
+    #[test]
+    fn objective_extraction_excludes_validation_sections() {
+        // Test that validation sections are not selected as objectives
+        let prompt = "TASK: Create a configuration file\n\n\
+VALIDATION:\n\
+- File must be valid JSON\n\
+- Must contain 'version' field\n\n\
+Create the config.json file.";
+
+        let objective = summarize_goal_objective(prompt);
+
+        assert!(
+            !objective.to_lowercase().contains("validation"),
+            "objective should NOT be validation section, got: {}",
+            objective
+        );
+        assert!(
+            !objective.to_lowercase().contains("must contain"),
+            "objective should NOT be validation constraint, got: {}",
+            objective
+        );
+    }
+
+    #[test]
+    fn completion_rule_detection_works() {
+        // Test is_completion_rule_line correctly identifies completion rules
+        let completion_lines = [
+            "DONE means all 15 docs exist",
+            "Validation: all tests pass",
+            "Success means the build completes",
+            "Verify that files exist",
+            "Ensure that all required files are present",
+        ];
+
+        for line in &completion_lines {
+            assert!(
+                is_completion_rule_line(line),
+                "'{}' should be detected as completion rule",
+                line
+            );
+        }
+
+        let task_lines = [
+            "Create 15 markdown files",
+            "Implement the feature",
+            "Build the application",
+            "Update the configuration",
+        ];
+
+        for line in &task_lines {
+            assert!(
+                !is_completion_rule_line(line),
+                "'{}' should NOT be detected as completion rule",
+                line
+            );
+        }
+    }
+
+    #[test]
+    fn fifteen_doc_prompt_objective_is_correct() {
+        // Full 15-doc prompt regression test
+        let prompt = "Create/update exactly 15 canonical Markdown docs inside docs/.\n\n\
+1. docs/01_PROJECT_OVERVIEW.md\n\
+2. docs/02_ARCHITECTURE.md\n\
+3. docs/03_TECHNOLOGY_STACK.md\n\
+4. docs/04_CORE_CONCEPTS.md\n\
+5. docs/05_FOLDER_STRUCTURE.md\n\
+6. docs/06_MAIN_WORKFLOWS.md\n\
+7. docs/07_API_REFERENCE.md\n\
+8. docs/08_DATA_MODEL.md\n\
+9. docs/09_CONFIGURATION.md\n\
+10. docs/10_DEVELOPMENT_GUIDE.md\n\
+11. docs/11_TESTING_STRATEGY.md\n\
+12. docs/12_DEPLOYMENT_AND_OPERATIONS.md\n\
+13. docs/13_SECURITY_AND_COMPLIANCE.md\n\
+14. docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md\n\
+15. docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md\n\n\
+All of these must be produced.\n\n\
+DONE means all 15 docs exist, are non-empty, and match the canonical structure.";
+
+        let objective = summarize_goal_objective(prompt);
+
+        // Expected: artifact contract based objective
+        assert!(
+            objective.contains("15") && objective.to_lowercase().contains("markdown"),
+            "15-doc prompt should produce artifact-based objective, got: {}",
+            objective
+        );
+        assert!(
+            !objective.to_lowercase().contains("done means"),
+            "objective should NOT be completion rule, got: {}",
+            objective
+        );
     }
 }

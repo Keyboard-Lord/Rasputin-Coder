@@ -184,8 +184,8 @@ fn get_chain_segment(app: &App) -> Line<'static> {
     let label = Span::styled("Chain: ", Style::default().fg(colors::TEXT_DIM));
 
     let value = if let Some(ref chain_id) = app.persistence.active_chain_id {
-        let short_id = if chain_id.len() > 12 {
-            format!("{}...", &chain_id[..12])
+        let short_id = if chain_id.chars().count() > 12 {
+            crate::text::truncate_chars(chain_id, 15)
         } else {
             chain_id.clone()
         };
@@ -517,8 +517,8 @@ fn get_git_segment(app: &App) -> Line<'static> {
     let commit = grounding
         .head_commit
         .as_ref()
-        .map(|c| &c[..7.min(c.len())])
-        .unwrap_or("???????");
+        .map(|c| crate::text::take_chars(c, 7))
+        .unwrap_or_else(|| "???????".to_string());
 
     let branch = grounding.branch_name.as_deref().unwrap_or("(detached)");
 
@@ -548,8 +548,8 @@ fn get_context_segment(app: &App) -> Line<'static> {
         .active
         .as_ref()
         .map(|m| {
-            let short = if m.len() > 10 {
-                format!("{}..", &m[..8])
+            let short = if m.chars().count() > 10 {
+                format!("{}..", crate::text::take_chars(m, 8))
             } else {
                 m.clone()
             };
@@ -765,6 +765,7 @@ mod tests {
             id: "chain-test".to_string(),
             name: "Test Chain".to_string(),
             objective: "Test objective".to_string(),
+            raw_prompt: "Test objective".to_string(),
             status,
             steps,
             active_step,
@@ -778,6 +779,7 @@ mod tests {
             total_steps_failed: 0,
             execution_outcome: None,
             force_override_used: false,
+            objective_satisfaction: crate::state::ObjectiveSatisfaction::default(),
             selected_context_files: vec![],
             context_state: None,
             pending_checkpoint: None,

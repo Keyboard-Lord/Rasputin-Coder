@@ -485,6 +485,13 @@ impl AgentState {
 
     /// Get data directory for persistence
     pub fn data_dir() -> std::path::PathBuf {
+        if let Ok(override_dir) = std::env::var("FORGE_DATA_DIR") {
+            let trimmed = override_dir.trim();
+            if !trimmed.is_empty() {
+                return std::path::PathBuf::from(trimmed);
+            }
+        }
+
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
         std::path::PathBuf::from(home)
             .join(".local")
@@ -510,6 +517,68 @@ impl AgentState {
     /// Load from default location
     pub fn load_default() -> Result<Self, ForgeError> {
         Self::load(&Self::state_path())
+    }
+
+    /// Load from default location for continuity (skips hash verification)
+    pub fn load_for_continuity() -> Option<Self> {
+        let path = Self::state_path();
+        if !path.exists() {
+            return None;
+        }
+        
+        let content = std::fs::read_to_string(&path).ok()?;
+        let object: serde_json::Map<String, Value> = serde_json::from_str(&content).ok()?;
+        
+        // Parse fields directly without hash verification
+        let task = object.get("task")?.as_str()?.to_string();
+        let files_written: HashSet<PathBuf> = object.get("files_written")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())?;
+        
+        // Extract paths from change_history without deserializing full records
+        let mut change_history = Vec::new();
+        if let Some(Value::Array(records)) = object.get("change_history") {
+            for record in records {
+                if let Value::Object(map) = record {
+                    if let Some(Value::Object(mutation)) = map.get("mutation") {
+                        if let Some(Value::String(path_str)) = mutation.get("path") {
+                            change_history.push(ChangeRecord {
+                                session_id: SessionId::new(),
+                                iteration: 0,
+                                timestamp: 0,
+                                mutation: Mutation {
+                                    path: PathBuf::from(path_str),
+                                    mutation_type: MutationType::Write,
+                                    content_hash_before: None,
+                                    content_hash_after: None,
+                                },
+                                validation_report: crate::types::ValidationReport::accept("Loaded from continuity"),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Create minimal state for working memory
+        Some(Self {
+            session_id: SessionId::new(),
+            iteration: 0,
+            max_iterations: 10,
+            task,
+            mode: crate::types::ExecutionMode::Edit,
+            status: SessionStatus::Initializing,
+            files_written,
+            files_read: HashMap::new(),
+            change_history,
+            completion_reason: None,
+            last_validation_report: None,
+            state_hash: String::new(),
+            previous_hash: None,
+            snapshots: HashMap::new(),
+            pending_validations: Vec::new(),
+            cardinality_violations: 0,
+            has_hash_mismatch: false,
+        })
     }
 
     /// Record a successful step-level validation even when no mutation occurred.
@@ -1161,5 +1230,21 @@ mod tests {
                 .map(|reason| reason.as_str())
         );
         loaded.verify_integrity().unwrap();
+    }
+
+    #[test]
+    fn data_dir_honors_env_override() {
+        let temp = TempDir::new().unwrap();
+        let override_dir = temp.path().join("forge-data");
+        unsafe {
+            std::env::set_var("FORGE_DATA_DIR", override_dir.as_os_str());
+        }
+
+        let resolved = AgentState::data_dir();
+
+        unsafe {
+            std::env::remove_var("FORGE_DATA_DIR");
+        }
+        assert_eq!(resolved, override_dir);
     }
 }

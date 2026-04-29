@@ -6,6 +6,10 @@
 //!
 //! These gates are fail-closed and block execution before any mutation occurs.
 
+use crate::explicit_artifact_contract::{
+    ExplicitArtifactContract, normalize_path_text as normalize_contract_path_text,
+    path_matches_expected as contract_path_matches_expected,
+};
 use crate::planner::ValidationFailureClass;
 use crate::state::AgentState;
 use crate::types::{CompletionReason, ValidationDecision, ValidationReport, ValidationStage};
@@ -87,6 +91,31 @@ impl CompletionGate {
                 reason: format!(
                     "code artifacts require passed syntax validation: {}",
                     code_validation_targets.join(", ")
+                ),
+            };
+        }
+
+        if let Some(contract) = ExplicitArtifactContract::from_task(&state.task) {
+            let status = contract.evaluate(&written_paths_buf(state));
+            if !status.missing_paths.is_empty() || !status.empty_paths.is_empty() {
+                return CompletionReadiness::NotReady {
+                    reason: format_explicit_contract_incomplete_reason(&contract, &status),
+                };
+            }
+            if !status.unexpected_paths.is_empty() {
+                return CompletionReadiness::NotReady {
+                    reason: format!(
+                        "explicit artifact contract produced unexpected artifact(s): {}",
+                        status.unexpected_paths.join(", ")
+                    ),
+                };
+            }
+
+            return CompletionReadiness::Ready {
+                reason: format!(
+                    "Created all {} required artifact(s): {}",
+                    contract.required_deliverable_count(),
+                    contract.required_paths.join(", ")
                 ),
             };
         }
@@ -204,6 +233,36 @@ impl CompletionGate {
                     .to_string(),
                 failure_class: ValidationFailureClass::VagueCompletionReason,
             };
+        }
+
+        if let Some(contract) = ExplicitArtifactContract::from_task(&state.task) {
+            let status = contract.evaluate(&written_paths_buf(state));
+            if !status.missing_paths.is_empty() || !status.empty_paths.is_empty() {
+                return CompletionGateResult::Reject {
+                    reason: format_explicit_contract_incomplete_reason(&contract, &status),
+                    failure_class: ValidationFailureClass::VagueCompletionReason,
+                };
+            }
+            if !status.unexpected_paths.is_empty() {
+                return CompletionGateResult::Reject {
+                    reason: format!(
+                        "Completion rejected: explicit artifact contract produced unexpected artifact(s): {}",
+                        status.unexpected_paths.join(", ")
+                    ),
+                    failure_class: ValidationFailureClass::VagueCompletionReason,
+                };
+            }
+            if !contract.is_reason_contract_aware(reason_str) {
+                return CompletionGateResult::Reject {
+                    reason: format!(
+                        "Completion rejected: explicit artifact contract completion reason must cite the required document set or at least one required filename ({})",
+                        contract.required_paths.join(", ")
+                    ),
+                    failure_class: ValidationFailureClass::VagueCompletionReason,
+                };
+            }
+
+            return CompletionGateResult::Accept;
         }
 
         if let Some(spec) = LiteralArtifactSpec::from_task(&state.task)
@@ -842,17 +901,44 @@ fn extract_task_marker(task: &str, marker: &str) -> Option<String> {
 }
 
 fn path_matches_expected(path: &Path, expected: &str) -> bool {
-    let actual = normalize_path_text(&path.to_string_lossy());
-    let expected = normalize_path_text(expected);
-
-    actual == expected || actual.ends_with(&format!("/{}", expected))
+    contract_path_matches_expected(path, expected)
 }
 
 fn normalize_path_text(path: &str) -> String {
-    path.trim()
-        .trim_start_matches("./")
-        .replace('\\', "/")
-        .to_lowercase()
+    normalize_contract_path_text(path)
+}
+
+fn written_paths_buf(state: &AgentState) -> Vec<PathBuf> {
+    let mut paths: Vec<PathBuf> = state.files_written.iter().cloned().collect();
+    if paths.is_empty() {
+        paths.extend(
+            state
+                .change_history
+                .iter()
+                .map(|record| record.mutation.path.clone()),
+        );
+    }
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+fn format_explicit_contract_incomplete_reason(
+    contract: &ExplicitArtifactContract,
+    status: &crate::explicit_artifact_contract::ExplicitArtifactStatus,
+) -> String {
+    let mut parts = vec![format!(
+        "explicit artifact contract incomplete: {}/{} required artifact(s) are present",
+        status.present_paths.len(),
+        contract.required_deliverable_count()
+    )];
+    if !status.missing_paths.is_empty() {
+        parts.push(format!("missing [{}]", status.missing_paths.join(", ")));
+    }
+    if !status.empty_paths.is_empty() {
+        parts.push(format!("empty [{}]", status.empty_paths.join(", ")));
+    }
+    parts.join("; ")
 }
 
 fn written_paths(state: &AgentState) -> Vec<String> {
@@ -1526,6 +1612,40 @@ mod tests {
         path
     }
 
+    fn write_relative_artifact(relative_path: &str, content: &str) -> PathBuf {
+        let path = PathBuf::from(relative_path);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create relative artifact parent");
+        }
+        std::fs::write(&path, content).expect("write relative artifact");
+        path
+    }
+
+    fn unique_relative_dir(prefix: &str) -> String {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        format!(
+            "target/explicit-contract-tests/{}-{}-{}",
+            prefix,
+            std::process::id(),
+            nanos
+        )
+    }
+
+    fn explicit_contract_task(paths: &[&str]) -> String {
+        let mut task = format!(
+            "Create exactly {} markdown files with these precise filenames:\n",
+            paths.len()
+        );
+        for (index, path) in paths.iter().enumerate() {
+            task.push_str(&format!("{}. {}\n", index + 1, path));
+        }
+        task.push_str("All of these must be produced.");
+        task
+    }
+
     #[test]
     fn completion_gate_rejects_wrong_literal_artifact_path() {
         let state = state_with_written_file(
@@ -1753,6 +1873,94 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         assert!(matches!(result, CompletionGateResult::Accept));
+    }
+
+    #[test]
+    fn completion_gate_rejects_partial_explicit_artifact_contract() {
+        let dir = unique_relative_dir("partial");
+        let first = format!("{}/docs/01_PROJECT_OVERVIEW.md", dir);
+        let second = format!("{}/docs/02_ARCHITECTURE.md", dir);
+        let first_path = write_relative_artifact(&first, "# Overview\n\nContract doc.\n");
+        let task = explicit_contract_task(&[&first, &second]);
+        let state = validated_state_with_written_paths(task, std::slice::from_ref(&first_path));
+        let reason = CompletionReason::new(&format!(
+            "Created {} with the requested markdown content",
+            first
+        ));
+
+        let result = CompletionGate::evaluate(&reason, &state, false, &[]);
+        let readiness = CompletionGate::readiness(&state, false, &[]);
+        let _ = std::fs::remove_dir_all(PathBuf::from(dir));
+
+        match result {
+            CompletionGateResult::Reject { reason, .. } => {
+                assert!(reason.contains("explicit artifact contract incomplete"));
+                assert!(reason.contains("02_ARCHITECTURE.md"));
+            }
+            CompletionGateResult::Accept => panic!("partial explicit contract must not complete"),
+        }
+        match readiness {
+            CompletionReadiness::NotReady { reason } => {
+                assert!(reason.contains("02_ARCHITECTURE.md"));
+            }
+            CompletionReadiness::Ready { reason } => {
+                panic!("partial explicit contract should stay blocked: {}", reason)
+            }
+        }
+    }
+
+    #[test]
+    fn completion_gate_accepts_full_explicit_artifact_contract() {
+        let dir = unique_relative_dir("full");
+        let first = format!("{}/docs/01_PROJECT_OVERVIEW.md", dir);
+        let second = format!("{}/docs/02_ARCHITECTURE.md", dir);
+        let first_path = write_relative_artifact(&first, "# Overview\n\nContract doc.\n");
+        let second_path = write_relative_artifact(&second, "# Architecture\n\nContract doc.\n");
+        let task = explicit_contract_task(&[&first, &second]);
+        let state = validated_state_with_written_paths(task, &[first_path.clone(), second_path.clone()]);
+        let reason = CompletionReason::new(&format!(
+            "Created all 2 required artifact(s): {}, {}",
+            first, second
+        ));
+
+        let result = CompletionGate::evaluate(&reason, &state, false, &[]);
+        let readiness = CompletionGate::readiness(&state, false, &[]);
+        let _ = std::fs::remove_dir_all(PathBuf::from(dir));
+
+        assert!(
+            matches!(result, CompletionGateResult::Accept),
+            "expected acceptance, got {:?}",
+            result
+        );
+        assert!(
+            matches!(readiness, CompletionReadiness::Ready { .. }),
+            "expected readiness, got {:?}",
+            readiness
+        );
+    }
+
+    #[test]
+    fn completion_gate_rejects_generic_reason_for_full_explicit_contract() {
+        let dir = unique_relative_dir("reason");
+        let first = format!("{}/docs/01_PROJECT_OVERVIEW.md", dir);
+        let second = format!("{}/docs/02_ARCHITECTURE.md", dir);
+        let first_path = write_relative_artifact(&first, "# Overview\n\nContract doc.\n");
+        let second_path = write_relative_artifact(&second, "# Architecture\n\nContract doc.\n");
+        let task = explicit_contract_task(&[&first, &second]);
+        let state = validated_state_with_written_paths(task, &[first_path.clone(), second_path.clone()]);
+        let reason = CompletionReason::new("Created README.md with updated markdown content");
+
+        let result = CompletionGate::evaluate(&reason, &state, false, &[]);
+        let _ = std::fs::remove_dir_all(PathBuf::from(dir));
+
+        match result {
+            CompletionGateResult::Reject { reason, .. } => {
+                assert!(reason.contains("must cite the required document set"));
+            }
+            CompletionGateResult::Accept => {
+                panic!("explicit contract completion reason must remain contract-aware")
+            }
+        }
     }
 
     #[test]

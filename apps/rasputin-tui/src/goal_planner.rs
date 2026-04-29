@@ -52,10 +52,24 @@ impl QwenGoalPlanner {
         goal: &Goal,
         repo_evidence: &str,
         previous_plan: Option<&GeneratedPlan>,
+        working_context: Option<&str>,
     ) -> Vec<ChatMessage> {
         let previous_plan_summary = previous_plan
             .map(Self::format_previous_plan)
             .unwrap_or_else(|| "None".to_string());
+
+        // Build user prompt with optional working memory context
+        let user_content = if let Some(context) = working_context {
+            format!(
+                "Raw goal prompt (verbatim):\n{}\n\n{}\n\nRepository evidence:\n{}\n\nPrevious rejected plan:\n{}\n\nReturn the plan JSON now.",
+                goal.statement, context, repo_evidence, previous_plan_summary
+            )
+        } else {
+            format!(
+                "Raw goal prompt (verbatim):\n{}\n\nRepository evidence:\n{}\n\nPrevious rejected plan:\n{}\n\nReturn the plan JSON now.",
+                goal.statement, repo_evidence, previous_plan_summary
+            )
+        };
 
         vec![
             ChatMessage {
@@ -64,17 +78,14 @@ impl QwenGoalPlanner {
             },
             ChatMessage {
                 role: "user".to_string(),
-                content: format!(
-                    "Goal:\n{}\n\nRepository evidence:\n{}\n\nPrevious rejected plan:\n{}\n\nReturn the plan JSON now.",
-                    goal.statement, repo_evidence, previous_plan_summary
-                ),
+                content: user_content,
             },
         ]
     }
 
     pub fn parse_response(
         response: &str,
-        fallback_objective: &str,
+        raw_prompt: &str,
     ) -> Result<GeneratedPlan, String> {
         let json = extract_json_object(response)?;
         let model_plan: ModelPlan = serde_json::from_str(json)
@@ -153,11 +164,20 @@ impl QwenGoalPlanner {
         let safe_to_chain =
             model_plan.safe_to_chain.unwrap_or(true) && !has_critical && approval_points.is_empty();
 
+        let fallback_objective = crate::guidance::summarize_goal_objective(raw_prompt);
+        let parsed_objective = model_plan
+            .objective
+            .filter(|objective| !objective.trim().is_empty())
+            .unwrap_or_else(|| fallback_objective.clone());
+        let objective = if crate::guidance::is_vague_objective_summary(&parsed_objective) {
+            fallback_objective
+        } else {
+            parsed_objective
+        };
+
         Ok(GeneratedPlan {
-            objective: model_plan
-                .objective
-                .filter(|objective| !objective.trim().is_empty())
-                .unwrap_or_else(|| fallback_objective.to_string()),
+            raw_prompt: raw_prompt.to_string(),
+            objective,
             steps,
             risks,
             approval_points,
@@ -185,7 +205,10 @@ impl QwenGoalPlanner {
 Return only one JSON object. Do not use markdown. \
 Schema: {\"objective\":\"short objective\",\"steps\":[{\"description\":\"imperative step\",\"action_type\":\"read|write|execute|validate|commit|external\",\"risk_level\":\"safe|caution|warning|critical\",\"likely_approval_needed\":false,\"affected_files\":[\"path\"]}],\"risks\":[{\"risk_type\":\"git_conflict|validation_failure|missing_context|approval_required|unprotected_write|external_dependency|mode_limitation\",\"description\":\"risk\",\"affected\":[\"path\"],\"mitigation\":\"mitigation\",\"level\":\"safe|caution|warning|critical\"}],\"required_context\":[\"path\"],\"reasoning\":\"why this sequence is correct\",\"safe_to_chain\":true}. \
 Keep the plan bounded to 3-8 concrete steps. Preserve validation and approval gates. \
-Do not invent files; include file paths only when present in repository evidence or clearly implied by the goal."
+Do not invent files; include file paths only when present in repository evidence or clearly implied by the goal. \
+The objective must preserve explicit deliverable contracts from the raw prompt: exact counts, artifact type, and exact filenames when provided. \
+Do not collapse the objective into vague phrases like 'Analyze requirements' or 'Begin your analysis now'. \
+If WORKING CONTEXT is provided, it represents the current session state including completed work, remaining deliverables, and recent files. Use this to maintain continuity across turns."
     }
 
     fn format_previous_plan(plan: &GeneratedPlan) -> String {
@@ -338,9 +361,11 @@ mod tests {
             "safe_to_chain": true
         }"#;
 
-        let plan = QwenGoalPlanner::parse_response(response, "fallback").expect("plan");
+        let raw_prompt = "Fix parser ambiguity in apps/rasputin-tui/src/commands.rs";
+        let plan = QwenGoalPlanner::parse_response(response, raw_prompt).expect("plan");
 
         assert_eq!(plan.objective, "Harden parser");
+        assert_eq!(plan.raw_prompt, raw_prompt);
         assert_eq!(plan.steps.len(), 2);
         assert_eq!(plan.steps[0].action_type, StepActionType::Read);
         assert_eq!(plan.steps[1].risk_level, RiskLevel::Caution);
@@ -363,10 +388,38 @@ mod tests {
     #[test]
     fn extracts_json_from_fenced_response() {
         let response = "```json\n{\"steps\":[{\"description\":\"Validate build\",\"action_type\":\"validate\"}]}\n```";
-
-        let plan = QwenGoalPlanner::parse_response(response, "fallback").expect("plan");
+        let raw_prompt = "Fix fallback parser";
+        let plan = QwenGoalPlanner::parse_response(response, raw_prompt).expect("plan");
 
         assert_eq!(plan.steps[0].action_type, StepActionType::Validate);
-        assert_eq!(plan.objective, "fallback");
+        assert_eq!(plan.objective, raw_prompt);
+    }
+
+    #[test]
+    fn replaces_vague_model_objective_with_contract_summary() {
+        let response = r#"{
+            "objective": "Analyze goal requirements",
+            "steps": [
+                {
+                    "description": "Create docs/01_PROJECT_OVERVIEW.md",
+                    "action_type": "write",
+                    "risk_level": "safe",
+                    "likely_approval_needed": false,
+                    "affected_files": ["docs/01_PROJECT_OVERVIEW.md"]
+                }
+            ],
+            "risks": [],
+            "required_context": ["docs/01_PROJECT_OVERVIEW.md"],
+            "reasoning": "Write the requested file first.",
+            "safe_to_chain": true
+        }"#;
+        let raw_prompt = "Create exactly 2 markdown files with these precise filenames:\n1. docs/01_PROJECT_OVERVIEW.md\n2. docs/02_ARCHITECTURE.md";
+
+        let plan = QwenGoalPlanner::parse_response(response, raw_prompt).expect("plan");
+
+        assert_eq!(
+            plan.objective,
+            "Generate exactly 2 markdown file(s) with the specified filenames"
+        );
     }
 }

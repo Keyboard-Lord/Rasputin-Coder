@@ -429,6 +429,14 @@ impl ForgeRuntimeHandle {
     pub fn poll_event(&self) -> Option<RuntimeEvent> {
         self.event_receiver.try_recv().ok()
     }
+
+    #[cfg(test)]
+    pub fn from_test_receiver(event_receiver: Receiver<RuntimeEvent>) -> Self {
+        Self {
+            event_receiver,
+            cancel_token: CancelToken::new(),
+        }
+    }
 }
 
 fn forge_crate_dir() -> PathBuf {
@@ -967,7 +975,7 @@ pub fn format_forge_event(event: &RuntimeEvent) -> String {
         } => {
             format!(
                 "[start] Forge runtime\n  Session: {}\n  Task: {}\n  Planner: {}",
-                &session_id[..session_id.len().min(16)],
+                crate::text::take_chars(session_id, 16),
                 task,
                 planner
             )
@@ -1338,8 +1346,8 @@ impl GitGrounding {
         let commit = self
             .head_commit
             .as_ref()
-            .map(|c| &c[..7.min(c.len())])
-            .unwrap_or("???????");
+            .map(|c| crate::text::take_chars(c, 7))
+            .unwrap_or_else(|| "???????".to_string());
         let branch = self.branch_name.as_deref().unwrap_or("(detached)");
         let dirty_marker = if self.is_dirty { "*" } else { "" };
 

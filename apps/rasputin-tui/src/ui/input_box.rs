@@ -73,6 +73,7 @@ impl InputBuffer {
         if self.cursor_byte > self.content.len() {
             self.cursor_byte = self.content.len();
         }
+        self.cursor_byte = crate::text::clamp_to_char_boundary(&self.content, self.cursor_byte);
         
         self.content.insert(self.cursor_byte, c);
         self.cursor_byte += c.len_utf8();
@@ -84,6 +85,7 @@ impl InputBuffer {
         if self.cursor_byte > self.content.len() {
             self.cursor_byte = self.content.len();
         }
+        self.cursor_byte = crate::text::clamp_to_char_boundary(&self.content, self.cursor_byte);
         
         self.content.insert_str(self.cursor_byte, text);
         self.cursor_byte += text.len();
@@ -107,6 +109,7 @@ impl InputBuffer {
     
     /// Handle delete
     pub fn delete(&mut self) {
+        self.cursor_byte = crate::text::clamp_to_char_boundary(&self.content, self.cursor_byte);
         if self.cursor_byte < self.content.len() {
             self.content.remove(self.cursor_byte);
             self.recalculate_wrapping();
@@ -127,6 +130,7 @@ impl InputBuffer {
     
     /// Move cursor right
     pub fn move_right(&mut self) {
+        self.cursor_byte = crate::text::clamp_to_char_boundary(&self.content, self.cursor_byte);
         if self.cursor_byte < self.content.len() {
             let next_char_len = self.content[self.cursor_byte..]
                 .chars()
@@ -149,23 +153,32 @@ impl InputBuffer {
     
     /// Move cursor up (to previous wrapped line)
     pub fn move_up(&mut self, line_width: usize) {
-        let current_line = self.cursor_byte / line_width;
+        let line_width = line_width.max(1);
+        let cursor_chars = self.content[..crate::text::clamp_to_char_boundary(&self.content, self.cursor_byte)]
+            .chars()
+            .count();
+        let current_line = cursor_chars / line_width;
         if current_line > 0 {
             let target_line = current_line - 1;
-            let target_pos = target_line * line_width + (self.cursor_byte % line_width);
-            self.cursor_byte = target_pos.min(self.content.len());
+            let target_pos = target_line * line_width + (cursor_chars % line_width);
+            self.cursor_byte = crate::text::byte_index_after_chars(&self.content, target_pos);
         }
     }
     
     /// Move cursor down (to next wrapped line)
     pub fn move_down(&mut self, line_width: usize) {
-        let current_line = self.cursor_byte / line_width;
-        let total_lines = (self.content.len() / line_width) + 1;
+        let line_width = line_width.max(1);
+        let cursor_chars = self.content[..crate::text::clamp_to_char_boundary(&self.content, self.cursor_byte)]
+            .chars()
+            .count();
+        let total_chars = self.content.chars().count();
+        let current_line = cursor_chars / line_width;
+        let total_lines = (total_chars / line_width) + 1;
         
         if current_line + 1 < total_lines {
             let target_line = current_line + 1;
-            let target_pos = target_line * line_width + (self.cursor_byte % line_width);
-            self.cursor_byte = target_pos.min(self.content.len());
+            let target_pos = target_line * line_width + (cursor_chars % line_width);
+            self.cursor_byte = crate::text::byte_index_after_chars(&self.content, target_pos);
         }
     }
     
@@ -216,16 +229,11 @@ impl InputBuffer {
         self.wrapped_lines.clear();
         
         for line in self.content.lines() {
-            if line.len() <= width {
+            if line.chars().count() <= width {
                 self.wrapped_lines.push(line.to_string());
             } else {
-                // Wrap long lines
-                let mut start = 0;
-                while start < line.len() {
-                    let end = (start + width).min(line.len());
-                    self.wrapped_lines.push(line[start..end].to_string());
-                    start = end;
-                }
+                self.wrapped_lines
+                    .extend(crate::text::chunk_chars(line, width));
             }
         }
         
@@ -273,8 +281,9 @@ pub fn render_input_box(
     for (idx, line) in buffer.visual_lines().iter().enumerate() {
         if idx == cursor_line && is_focused {
             // Insert cursor indicator
-            let before = &line[..cursor_col.min(line.len())];
-            let after = &line[cursor_col.min(line.len())..];
+            let split = crate::text::clamp_to_char_boundary(line, cursor_col.min(line.len()));
+            let before = &line[..split];
+            let after = &line[split..];
             
             let spans = vec![
                 Span::raw(before),
@@ -355,5 +364,19 @@ mod tests {
         
         buffer.move_right();
         assert_eq!(buffer.cursor_byte, 11);
+    }
+
+    #[test]
+    fn test_unicode_wrapping_and_rendering_do_not_slice_byte_boundaries() {
+        let mut buffer = InputBuffer::new();
+        buffer.insert_str("“curly quotes” — markdown-heavy numbered list item");
+        buffer.set_max_height(3);
+
+        let _paragraph = render_input_box(&buffer, "Input", true);
+        assert!(buffer
+            .visual_lines()
+            .iter()
+            .all(|line| line.is_char_boundary(line.len())));
+        assert!(buffer.content().is_char_boundary(buffer.cursor_byte));
     }
 }

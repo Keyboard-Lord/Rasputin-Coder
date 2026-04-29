@@ -3,6 +3,7 @@
 //! Stores: active repo, recent repos, conversations, messages, runtime events, model status
 
 use crate::forge_runtime::GitGrounding;
+use crate::state::ObjectiveSatisfaction;
 use anyhow::Result;
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -123,6 +124,8 @@ pub struct PersistentConversation {
     pub inspector: PersistentInspectorState,
     pub messages: Vec<PersistentMessage>,
     pub runtime_events: Vec<PersistentEvent>,
+    #[serde(default)]
+    pub structured_outputs: Vec<PersistentStructuredOutput>,
     pub created_at: DateTime<Local>,
     pub updated_at: DateTime<Local>,
     #[serde(default)]
@@ -135,6 +138,16 @@ pub struct PersistentConversation {
 pub struct PersistentMessage {
     pub id: String,
     pub role: String,
+    pub content: String,
+    pub timestamp: DateTime<Local>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistentStructuredOutput {
+    pub id: String,
+    pub kind: String,
+    pub title: String,
+    pub source: String,
     pub content: String,
     pub timestamp: DateTime<Local>,
 }
@@ -420,6 +433,8 @@ pub struct ExecutionResultCapture {
     pub captured_at: DateTime<Local>,
     #[serde(default)]
     pub generated_retry_step_id: Option<String>,
+    #[serde(default)]
+    pub affected_paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -489,6 +504,8 @@ pub struct PersistentChain {
     pub id: String,
     pub name: String,
     pub objective: String,
+    #[serde(default)]
+    pub raw_prompt: String,
     pub status: ChainLifecycleStatus,
     pub steps: Vec<PersistentChainStep>,
     pub active_step: Option<usize>,
@@ -506,6 +523,9 @@ pub struct PersistentChain {
     /// Track if force override was used (maps to SuccessWithWarnings)
     #[serde(default)]
     pub force_override_used: bool,
+    /// Existing completion truth for the objective, including explicit artifact contracts.
+    #[serde(default)]
+    pub objective_satisfaction: ObjectiveSatisfaction,
     /// Context Assembly V2: files selected for context in this chain
     #[serde(default)]
     pub selected_context_files: Vec<String>,
@@ -524,6 +544,14 @@ pub struct PersistentChain {
 }
 
 impl PersistentChain {
+    pub fn raw_prompt_text(&self) -> &str {
+        if self.raw_prompt.trim().is_empty() {
+            &self.objective
+        } else {
+            &self.raw_prompt
+        }
+    }
+
     /// V1.6 AUDIT: Append an event to the chain's audit log
     pub fn audit_event(&mut self, event: crate::state::AuditEvent) {
         self.audit_log.append(event);
@@ -801,6 +829,23 @@ impl PersistentChain {
         self.force_override_used = true;
     }
 
+    pub fn recorded_affected_paths(&self) -> Vec<String> {
+        let mut seen = std::collections::HashSet::new();
+        let mut paths = Vec::new();
+
+        for step in &self.steps {
+            for capture in &step.execution_results {
+                for path in &capture.affected_paths {
+                    if seen.insert(path.clone()) {
+                        paths.push(path.clone());
+                    }
+                }
+            }
+        }
+
+        paths
+    }
+
     /// AGGREGATE step outcomes into chain-level truth
     /// This ensures multi-step chains cannot hide warning/failure states
     fn aggregate_step_outcomes(&self) -> ExecutionOutcome {
@@ -844,6 +889,15 @@ impl PersistentChain {
             ChainLifecycleStatus::Halted | ChainLifecycleStatus::WaitingForApproval
         );
         if (has_blocked || chain_blocked) && !all_steps_complete {
+            return ExecutionOutcome::Blocked;
+        }
+
+        if self
+            .objective_satisfaction
+            .artifact_contract
+            .as_ref()
+            .is_some_and(|contract| contract.has_requirements() && !contract.is_satisfied())
+        {
             return ExecutionOutcome::Blocked;
         }
 
@@ -1907,7 +1961,7 @@ impl StepReplayRecord {
         Self {
             replay_id: format!(
                 "replay-{}-{}-{}",
-                chain_id[..8.min(chain_id.len())].to_string(),
+                crate::text::take_chars(&chain_id, 8),
                 step_id,
                 chrono::Local::now().timestamp()
             ),
@@ -2501,6 +2555,7 @@ impl PersistentState {
         name: impl Into<String>,
         objective: impl Into<String>,
     ) -> &PersistentChain {
+        let objective = objective.into();
         let id = format!(
             "chain-{}-{:08x}",
             Local::now().timestamp(),
@@ -2509,7 +2564,8 @@ impl PersistentState {
         let chain = PersistentChain {
             id: id.clone(),
             name: name.into(),
-            objective: objective.into(),
+            objective: objective.clone(),
+            raw_prompt: objective,
             status: ChainLifecycleStatus::Draft,
             steps: vec![],
             active_step: None,
@@ -2523,6 +2579,7 @@ impl PersistentState {
             total_steps_failed: 0,
             execution_outcome: None,
             force_override_used: false,
+            objective_satisfaction: ObjectiveSatisfaction::default(),
             selected_context_files: vec![],
             context_state: None,
             git_grounding: None,
@@ -2861,6 +2918,7 @@ impl PersistentState {
                 inspector: PersistentInspectorState::default(),
                 messages: vec![],
                 runtime_events: vec![],
+                structured_outputs: vec![],
                 created_at: Local::now(),
                 updated_at: Local::now(),
                 archived: false,
@@ -3584,6 +3642,7 @@ mod checkpoint_tests {
             id: "chain-test".to_string(),
             name: "test".to_string(),
             objective: "objective".to_string(),
+            raw_prompt: "objective".to_string(),
             status: ChainLifecycleStatus::Running,
             steps: vec![
                 PersistentChainStep {
@@ -3640,6 +3699,7 @@ mod checkpoint_tests {
             total_steps_failed: 0,
             execution_outcome: None,
             force_override_used: false,
+            objective_satisfaction: ObjectiveSatisfaction::default(),
             selected_context_files: vec!["tracked.txt".to_string()],
             context_state: None,
             pending_checkpoint: None,
