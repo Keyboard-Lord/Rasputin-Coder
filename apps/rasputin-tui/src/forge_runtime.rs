@@ -9,8 +9,9 @@
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{
     Arc, Mutex,
@@ -202,6 +203,11 @@ pub struct ForgeConfig {
     pub planner_endpoint: String,
     pub planner_model: String,
     pub working_dir: String,
+    pub sandbox_mode: String,
+    pub disposable_workspace_backend: Option<String>,
+    pub disposable_workspace_retain_on_failure: Option<bool>,
+    pub disposable_workspace_retain_on_success: Option<bool>,
+    pub disposable_workspace_require_explicit_promotion: Option<bool>,
     pub css_compression: bool,
     pub planner_seed: u64,
     pub planner_temperature: f32,
@@ -214,8 +220,13 @@ impl Default for ForgeConfig {
             max_iterations: 10,
             planner_type: "http".to_string(),
             planner_endpoint: "http://127.0.0.1:11434".to_string(),
-            planner_model: "qwen2.5-coder:14b".to_string(),
+            planner_model: "huihui_ai/deepseek-r1-abliterated:14b".to_string(),
             working_dir: ".".to_string(),
+            sandbox_mode: "repo_boundary_only".to_string(),
+            disposable_workspace_backend: None,
+            disposable_workspace_retain_on_failure: None,
+            disposable_workspace_retain_on_success: None,
+            disposable_workspace_require_explicit_promotion: None,
             css_compression: true,
             planner_seed: 42,
             planner_temperature: 0.0,
@@ -251,6 +262,231 @@ struct RuntimeBridgeState {
     last_iteration: u32,
     final_iteration: Option<u32>,
     last_error: Option<String>,
+}
+
+#[derive(Debug)]
+struct DisposableWorkspace {
+    source_dir: PathBuf,
+    worktree_dir: PathBuf,
+    source_head: String,
+    retain_on_success: bool,
+    retain_on_failure: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ChildRuntimeConfig {
+    working_dir: String,
+    sandbox_mode: String,
+}
+
+impl DisposableWorkspace {
+    fn prepare(config: &ForgeConfig) -> Result<Option<Self>> {
+        match config.sandbox_mode.as_str() {
+            "none" | "repo_boundary_only" | "" => Ok(None),
+            "disposable_workspace" => Self::prepare_git_worktree(config).map(Some),
+            "external_container" => Err(anyhow!(
+                "external_container is declared but not implemented; current runtime supports repo_boundary_only and disposable_workspace"
+            )),
+            other => Err(anyhow!("unsupported sandbox_mode '{}'", other)),
+        }
+    }
+
+    fn prepare_git_worktree(config: &ForgeConfig) -> Result<Self> {
+        let backend = config
+            .disposable_workspace_backend
+            .as_deref()
+            .unwrap_or("git_worktree");
+        if backend != "git_worktree" {
+            return Err(anyhow!(
+                "disposable_workspace backend '{}' is not implemented; current TUI backend is git_worktree",
+                backend
+            ));
+        }
+
+        if config
+            .disposable_workspace_require_explicit_promotion
+            .is_some_and(|required| !required)
+        {
+            return Err(anyhow!(
+                "disposable_workspace requires explicit promotion; require_explicit_promotion=false is not supported"
+            ));
+        }
+
+        let source_dir = PathBuf::from(&config.working_dir)
+            .canonicalize()
+            .with_context(|| {
+                format!(
+                    "cannot canonicalize source workspace {}",
+                    config.working_dir
+                )
+            })?;
+
+        ensure_git_repo(&source_dir)?;
+        let source_head = git_stdout(&source_dir, &["rev-parse", "HEAD"])
+            .context("failed to look up source HEAD before disposable execution")?;
+        let worktree_dir = std::env::temp_dir().join(format!(
+            "rasputin-disposable-worktree-{}",
+            uuid::Uuid::new_v4()
+        ));
+        validate_disposable_worktree_path(&worktree_dir)?;
+
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(&source_dir)
+            .args(["worktree", "add", "--detach"])
+            .arg(&worktree_dir)
+            .arg("HEAD")
+            .output()
+            .context("failed to create disposable git worktree")?;
+
+        if !output.status.success() {
+            return Err(anyhow!(
+                "failed to create disposable git worktree: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+
+        Ok(Self {
+            source_dir,
+            worktree_dir,
+            source_head,
+            retain_on_success: config
+                .disposable_workspace_retain_on_success
+                .unwrap_or(false),
+            retain_on_failure: config
+                .disposable_workspace_retain_on_failure
+                .unwrap_or(false),
+        })
+    }
+
+    fn execution_dir(&self) -> &Path {
+        &self.worktree_dir
+    }
+
+    fn child_runtime_config(&self) -> ChildRuntimeConfig {
+        ChildRuntimeConfig {
+            working_dir: self.worktree_dir.to_string_lossy().to_string(),
+            sandbox_mode: "repo_boundary_only".to_string(),
+        }
+    }
+
+    fn promotion_report(&self) -> Result<String> {
+        let current_source_head = git_stdout(&self.source_dir, &["rev-parse", "HEAD"])
+            .context("failed to look up source HEAD after disposable execution")?;
+        let source_changed = current_source_head != self.source_head;
+
+        let changed_files = git_lines(
+            &self.worktree_dir,
+            &["status", "--porcelain", "--untracked-files=all"],
+        )?;
+
+        let _ = Command::new("git")
+            .arg("-C")
+            .arg(&self.worktree_dir)
+            .args(["add", "-N", "--", "."])
+            .output();
+
+        let diff = git_stdout_raw(&self.worktree_dir, &["diff", "--binary", "HEAD", "--"])
+            .context("failed to generate disposable workspace diff")?;
+
+        let mut report = String::new();
+        report.push_str("Disposable workspace promotion package\n");
+        report.push_str("execution_environment: disposable_workspace (git_worktree)\n");
+        report.push_str("Mode: disposable_workspace (git_worktree)\n");
+        report.push_str(&format!(
+            "Source workspace: {}\n",
+            self.source_dir.display()
+        ));
+        report.push_str(&format!(
+            "Disposable workspace: {}\n",
+            self.worktree_dir.display()
+        ));
+        report.push_str(&format!("Source HEAD at start: {}\n", self.source_head));
+        report.push_str(&format!("Source HEAD now: {}\n", current_source_head));
+        report.push_str(&format!("source_head_before: {}\n", self.source_head));
+        report.push_str(&format!("source_head_after: {}\n", current_source_head));
+        if source_changed {
+            report.push_str(
+                "Promotion status: BLOCKED - source workspace changed since task start\n",
+            );
+            report.push_str("promotion_status: blocked\n");
+        } else {
+            report.push_str(
+                "Promotion status: READY FOR REVIEW - explicit promotion command not implemented\n",
+            );
+            report.push_str("promotion_status: pending_review\n");
+        }
+        report.push_str("changes_made:\n");
+        report.push_str("\nChanged files:\n");
+        if changed_files.is_empty() {
+            report.push_str("- <none>\n");
+        } else {
+            for file in &changed_files {
+                report.push_str(&format!("- {}\n", file));
+            }
+        }
+        report.push_str("validation_results: report_only\n");
+        report.push_str("\nUnified diff:\n");
+        if diff.trim().is_empty() {
+            report.push_str("<empty>\n");
+        } else {
+            report.push_str(&diff);
+            if !diff.ends_with('\n') {
+                report.push('\n');
+            }
+        }
+        report.push_str("\nNo source workspace files were modified by this run.\n");
+        Ok(report)
+    }
+
+    fn cleanup(&self, success: bool) -> Result<bool> {
+        let retain = if success {
+            self.retain_on_success
+        } else {
+            self.retain_on_failure
+        };
+        if retain {
+            return Ok(false);
+        }
+
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(&self.source_dir)
+            .args(["worktree", "remove", "--force"])
+            .arg(&self.worktree_dir)
+            .output()
+            .context("failed to remove disposable git worktree")?;
+
+        if !output.status.success() {
+            return Err(anyhow!(
+                "failed to remove disposable git worktree: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+
+        if self.worktree_dir.exists() {
+            fs::remove_dir_all(&self.worktree_dir).with_context(|| {
+                format!(
+                    "failed to remove disposable worktree directory {}",
+                    self.worktree_dir.display()
+                )
+            })?;
+        }
+
+        Ok(true)
+    }
+}
+
+fn child_runtime_config(
+    config: &ForgeConfig,
+    disposable_workspace: Option<&DisposableWorkspace>,
+) -> ChildRuntimeConfig {
+    disposable_workspace
+        .map(DisposableWorkspace::child_runtime_config)
+        .unwrap_or_else(|| ChildRuntimeConfig {
+            working_dir: config.working_dir.clone(),
+            sandbox_mode: config.sandbox_mode.clone(),
+        })
 }
 
 impl ForgeRuntimeHandle {
@@ -303,15 +539,41 @@ impl ForgeRuntimeHandle {
         sender: Sender<RuntimeEvent>,
         cancel_token: CancelToken,
     ) -> Result<()> {
+        let disposable_workspace = DisposableWorkspace::prepare(&config)?;
+        if let Some(workspace) = disposable_workspace.as_ref() {
+            sender.send(RuntimeEvent::ToolResult {
+                name: "disposable_workspace_created".to_string(),
+                success: true,
+                output: Some(format!(
+                    "Created disposable git worktree at {}. Source workspace will not be mutated.",
+                    workspace.execution_dir().display()
+                )),
+                error: None,
+            })?;
+        }
+
         let forge_binary = ensure_forge_binary()?;
+        let child_config = child_runtime_config(&config, disposable_workspace.as_ref());
+        if disposable_workspace.is_some() {
+            sender.send(RuntimeEvent::ToolResult {
+                name: "disposable_workspace_execution_started".to_string(),
+                success: true,
+                output: Some(format!(
+                    "Worker config working_dir={} sandbox_mode={}",
+                    child_config.working_dir, child_config.sandbox_mode
+                )),
+                error: None,
+            })?;
+        }
         let mut command = Command::new(&forge_binary);
         command
             .arg(&config.task)
             .arg(config.max_iterations.to_string())
             .arg(&config.planner_type)
-            .current_dir(&config.working_dir)
+            .current_dir(&child_config.working_dir)
             .env("FORGE_PLANNER_ENDPOINT", &config.planner_endpoint)
             .env("FORGE_PLANNER_MODEL", &config.planner_model)
+            .env("FORGE_SANDBOX_MODE", &child_config.sandbox_mode)
             .env(
                 "FORGE_CSS_COMPRESSION",
                 if config.css_compression { "1" } else { "0" },
@@ -325,9 +587,20 @@ impl ForgeRuntimeHandle {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        let mut child = command
-            .spawn()
-            .with_context(|| format!("failed to launch Forge runtime in {}", config.working_dir))?;
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(error) => {
+                if let Some(workspace) = disposable_workspace.as_ref() {
+                    let _ = workspace.cleanup(false);
+                }
+                return Err(error).with_context(|| {
+                    format!(
+                        "failed to launch Forge runtime in {}",
+                        child_config.working_dir
+                    )
+                });
+            }
+        };
 
         // V1.5: Store child process ID in cancel token for external cancellation
         // We need to extract stdout/stderr before storing the child
@@ -389,7 +662,49 @@ impl ForgeRuntimeHandle {
             if let Some(ref mut child) = *child_guard {
                 child.wait().context("failed waiting for Forge runtime")?
             } else {
-                // Child was cancelled
+                // Child was cancelled; treat the disposable workspace as failed work.
+                if let Some(workspace) = disposable_workspace.as_ref() {
+                    sender.send(RuntimeEvent::ToolResult {
+                        name: "disposable_workspace_validation_failed".to_string(),
+                        success: false,
+                        output: None,
+                        error: Some("Disposable worktree execution was cancelled".to_string()),
+                    })?;
+                    match workspace.cleanup(false) {
+                        Ok(true) => sender.send(RuntimeEvent::ToolResult {
+                            name: "disposable_workspace_cleaned".to_string(),
+                            success: true,
+                            output: Some(format!(
+                                "Removed disposable worktree {}",
+                                workspace.execution_dir().display()
+                            )),
+                            error: None,
+                        })?,
+                        Ok(false) if workspace.retain_on_failure => {
+                            sender.send(RuntimeEvent::ToolResult {
+                                name: "disposable_workspace_retained".to_string(),
+                                success: true,
+                                output: Some(format!(
+                                    "Retained disposable worktree {}",
+                                    workspace.execution_dir().display()
+                                )),
+                                error: None,
+                            })?
+                        }
+                        Ok(false) => {}
+                        Err(error) => sender.send(RuntimeEvent::ToolResult {
+                            name: "disposable_workspace_cleanup_failed".to_string(),
+                            success: false,
+                            output: None,
+                            error: Some(error.to_string()),
+                        })?,
+                    }
+                }
+                sender.send(RuntimeEvent::Finished {
+                    success: false,
+                    iterations: 0,
+                    error: Some("Forge runtime execution was cancelled".to_string()),
+                })?;
                 return Ok(());
             }
         };
@@ -415,6 +730,106 @@ impl ForgeRuntimeHandle {
         } else {
             bridge_state.last_error.or(stderr_tail)
         };
+        if disposable_workspace.is_some() {
+            sender.send(RuntimeEvent::ToolResult {
+                name: if status.success() {
+                    "disposable_workspace_validation_passed".to_string()
+                } else {
+                    "disposable_workspace_validation_failed".to_string()
+                },
+                success: status.success(),
+                output: status
+                    .success()
+                    .then(|| "Disposable worktree execution completed successfully".to_string()),
+                error: if status.success() {
+                    None
+                } else {
+                    error.clone().or_else(|| {
+                        Some("Disposable worktree execution failed validation".to_string())
+                    })
+                },
+            })?;
+        }
+        if status.success()
+            && let Some(workspace) = disposable_workspace.as_ref()
+        {
+            match workspace.promotion_report() {
+                Ok(report) => {
+                    sender.send(RuntimeEvent::ToolResult {
+                        name: "disposable_workspace_promotion_report_created".to_string(),
+                        success: true,
+                        output: Some(report),
+                        error: None,
+                    })?;
+                    sender.send(RuntimeEvent::ToolResult {
+                        name: "disposable_workspace_promotion_pending".to_string(),
+                        success: true,
+                        output: Some("Ran safely in a disposable worktree. Source files were not changed. Promotion report is ready.".to_string()),
+                        error: None,
+                    })?;
+                }
+                Err(error) => {
+                    sender.send(RuntimeEvent::ToolResult {
+                        name: "disposable_workspace_promotion_report_created".to_string(),
+                        success: false,
+                        output: None,
+                        error: Some(format!("Failed to build promotion package: {}", error)),
+                    })?;
+                    if let Some(workspace) = disposable_workspace.as_ref() {
+                        let _ = workspace.cleanup(false);
+                    }
+                    sender.send(RuntimeEvent::Finished {
+                        success: false,
+                        iterations,
+                        error: Some(format!("Failed to build promotion package: {}", error)),
+                    })?;
+                    return Ok(());
+                }
+            }
+        }
+
+        if let Some(workspace) = disposable_workspace.as_ref() {
+            let retained = if status.success() {
+                workspace.retain_on_success
+            } else {
+                workspace.retain_on_failure
+            };
+            match workspace.cleanup(status.success()) {
+                Ok(true) => sender.send(RuntimeEvent::ToolResult {
+                    name: "disposable_workspace_cleaned".to_string(),
+                    success: true,
+                    output: Some(format!(
+                        "Removed disposable worktree {}",
+                        workspace.execution_dir().display()
+                    )),
+                    error: None,
+                })?,
+                Ok(false) if retained => sender.send(RuntimeEvent::ToolResult {
+                    name: "disposable_workspace_retained".to_string(),
+                    success: true,
+                    output: Some(format!(
+                        "Retained disposable worktree {}",
+                        workspace.execution_dir().display()
+                    )),
+                    error: None,
+                })?,
+                Ok(false) => {}
+                Err(error) => {
+                    sender.send(RuntimeEvent::ToolResult {
+                        name: "disposable_workspace_cleanup_failed".to_string(),
+                        success: false,
+                        output: None,
+                        error: Some(error.to_string()),
+                    })?;
+                    sender.send(RuntimeEvent::Finished {
+                        success: false,
+                        iterations,
+                        error: Some(format!("Disposable workspace cleanup failed: {}", error)),
+                    })?;
+                    return Ok(());
+                }
+            }
+        }
 
         sender.send(RuntimeEvent::Finished {
             success: status.success(),
@@ -428,6 +843,14 @@ impl ForgeRuntimeHandle {
     /// Poll for next event (non-blocking)
     pub fn poll_event(&self) -> Option<RuntimeEvent> {
         self.event_receiver.try_recv().ok()
+    }
+
+    #[cfg(test)]
+    pub fn from_test_receiver(event_receiver: Receiver<RuntimeEvent>) -> Self {
+        Self {
+            event_receiver,
+            cancel_token: CancelToken::new(),
+        }
     }
 }
 
@@ -510,6 +933,80 @@ fn forge_binary_name() -> &'static str {
         "forge_bootstrap.exe"
     } else {
         "forge_bootstrap"
+    }
+}
+
+fn ensure_git_repo(path: &Path) -> Result<()> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .output()
+        .context("failed to inspect git repository")?;
+
+    if output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "true" {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "disposable_workspace currently requires a git repository; non-git copy backend is not implemented"
+        ))
+    }
+}
+
+fn git_stdout(repo: &Path, args: &[&str]) -> Result<String> {
+    Ok(git_stdout_raw(repo, args)?.trim().to_string())
+}
+
+fn git_stdout_raw(repo: &Path, args: &[&str]) -> Result<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(args)
+        .output()
+        .with_context(|| format!("failed to run git {}", args.join(" ")))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(anyhow!(
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+fn git_lines(repo: &Path, args: &[&str]) -> Result<Vec<String>> {
+    Ok(git_stdout(repo, args)?
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect())
+}
+
+fn validate_disposable_worktree_path(path: &Path) -> Result<()> {
+    let temp_root = std::env::temp_dir()
+        .canonicalize()
+        .context("failed to canonicalize temporary directory for disposable workspace")?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow!("disposable worktree path has no parent"))?;
+    let parent = parent.canonicalize().with_context(|| {
+        format!(
+            "failed to canonicalize disposable worktree parent {}",
+            parent.display()
+        )
+    })?;
+
+    if parent.starts_with(&temp_root) {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "disposable worktree path {} is outside temporary root {}",
+            path.display(),
+            temp_root.display()
+        ))
     }
 }
 
@@ -967,7 +1464,7 @@ pub fn format_forge_event(event: &RuntimeEvent) -> String {
         } => {
             format!(
                 "[start] Forge runtime\n  Session: {}\n  Task: {}\n  Planner: {}",
-                &session_id[..session_id.len().min(16)],
+                crate::text::take_chars(session_id, 16),
                 task,
                 planner
             )
@@ -1147,12 +1644,327 @@ fn extract_directory(message: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     fn sample_config() -> ForgeConfig {
         ForgeConfig {
             task: "Create src/main.rs".to_string(),
             planner_type: "http".to_string(),
             ..ForgeConfig::default()
+        }
+    }
+
+    fn run_git(repo: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(args)
+            .output()
+            .expect("git command should run");
+        assert!(
+            output.status.success(),
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn temp_git_repo() -> TempDir {
+        let temp = tempfile::tempdir().expect("temp dir should be created");
+        run_git(temp.path(), &["init", "-q"]);
+        run_git(temp.path(), &["config", "user.email", "test@example.com"]);
+        run_git(temp.path(), &["config", "user.name", "Test User"]);
+        fs::write(temp.path().join("README.md"), "initial\n").expect("seed file should be written");
+        run_git(temp.path(), &["add", "README.md"]);
+        run_git(temp.path(), &["commit", "-q", "-m", "initial"]);
+        temp
+    }
+
+    fn disposable_config(source_dir: &Path) -> ForgeConfig {
+        ForgeConfig {
+            working_dir: source_dir.to_string_lossy().to_string(),
+            sandbox_mode: "disposable_workspace".to_string(),
+            disposable_workspace_backend: Some("git_worktree".to_string()),
+            disposable_workspace_require_explicit_promotion: Some(true),
+            ..sample_config()
+        }
+    }
+
+    fn source_status(repo: &Path) -> Vec<String> {
+        git_lines(repo, &["status", "--porcelain", "--untracked-files=all"])
+            .expect("status should be available")
+    }
+
+    #[test]
+    fn disposable_workspace_creates_distinct_worktree_and_child_repo_boundary_config() {
+        let repo = temp_git_repo();
+        let source_dir = repo.path().canonicalize().unwrap();
+        let config = disposable_config(&source_dir);
+
+        let workspace = DisposableWorkspace::prepare(&config)
+            .expect("workspace preparation should succeed")
+            .expect("disposable workspace should be created");
+        let child_config = child_runtime_config(&config, Some(&workspace));
+
+        assert_ne!(workspace.execution_dir(), source_dir.as_path());
+        assert_eq!(
+            PathBuf::from(&child_config.working_dir),
+            workspace.worktree_dir
+        );
+        assert_ne!(PathBuf::from(&child_config.working_dir), source_dir);
+        assert_eq!(child_config.sandbox_mode, "repo_boundary_only");
+
+        workspace.cleanup(false).expect("cleanup should succeed");
+        assert!(!workspace.worktree_dir.exists());
+    }
+
+    #[test]
+    fn disposable_workspace_rejects_invalid_backend_and_non_git_source() {
+        let repo = temp_git_repo();
+        let mut config = disposable_config(repo.path());
+        config.disposable_workspace_backend = Some("copy".to_string());
+
+        let error = DisposableWorkspace::prepare(&config)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("backend 'copy' is not implemented"));
+
+        let non_git = tempfile::tempdir().expect("temp dir should be created");
+        let error = DisposableWorkspace::prepare(&disposable_config(non_git.path()))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("requires a git repository"));
+
+        let mut config = disposable_config(repo.path());
+        config.sandbox_mode = "invalid_backend_mode".to_string();
+        let error = DisposableWorkspace::prepare(&config)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("unsupported sandbox_mode"));
+    }
+
+    #[test]
+    fn disposable_workspace_rejects_disabled_explicit_promotion() {
+        let repo = temp_git_repo();
+        let mut config = disposable_config(repo.path());
+        config.disposable_workspace_require_explicit_promotion = Some(false);
+
+        let error = DisposableWorkspace::prepare(&config)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("require_explicit_promotion=false is not supported"));
+    }
+
+    #[test]
+    fn disposable_workspace_rejects_git_repo_without_head() {
+        let repo = tempfile::tempdir().expect("temp dir should be created");
+        run_git(repo.path(), &["init", "-q"]);
+
+        let error = DisposableWorkspace::prepare(&disposable_config(repo.path()))
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("failed to look up source HEAD before disposable execution"));
+    }
+
+    #[test]
+    fn disposable_worktree_path_must_stay_under_temp_root() {
+        let outside_temp = repo_root().join("rasputin-disposable-worktree-test");
+
+        let error = validate_disposable_worktree_path(&outside_temp)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("outside temporary root"));
+    }
+
+    #[test]
+    fn disposable_workspace_changes_stay_in_worktree_until_promotion_exists() {
+        let repo = temp_git_repo();
+        let config = disposable_config(repo.path());
+        let workspace = DisposableWorkspace::prepare(&config)
+            .expect("workspace preparation should succeed")
+            .expect("disposable workspace should be created");
+        let source_readme_before =
+            fs::read_to_string(repo.path().join("README.md")).expect("source read should work");
+
+        fs::write(
+            workspace.worktree_dir.join("README.md"),
+            "changed in disposable\n",
+        )
+        .expect("worktree file should be writable");
+        fs::write(
+            workspace.worktree_dir.join("new.txt"),
+            "new disposable file\n",
+        )
+        .expect("worktree new file should be writable");
+
+        assert_eq!(
+            fs::read_to_string(repo.path().join("README.md")).expect("source read should work"),
+            source_readme_before
+        );
+        assert!(source_status(repo.path()).is_empty());
+        assert!(!repo.path().join("new.txt").exists());
+
+        let report = workspace
+            .promotion_report()
+            .expect("promotion report should be generated");
+        assert!(report.contains("execution_environment: disposable_workspace (git_worktree)"));
+        assert!(report.contains("changes_made:"));
+        assert!(report.contains("validation_results: report_only"));
+        assert!(report.contains("source_head_before:"));
+        assert!(report.contains("source_head_after:"));
+        assert!(report.contains("promotion_status: pending_review"));
+        assert!(report.contains("README.md"));
+        assert!(report.contains("new.txt"));
+
+        workspace.cleanup(false).expect("cleanup should succeed");
+    }
+
+    #[test]
+    fn disposable_workspace_cleanup_and_retention_follow_failure_and_success_flags() {
+        let repo = temp_git_repo();
+        let mut config = disposable_config(repo.path());
+
+        let cleaned = DisposableWorkspace::prepare(&config)
+            .expect("workspace preparation should succeed")
+            .expect("disposable workspace should be created");
+        let cleaned_path = cleaned.worktree_dir.clone();
+        assert!(cleaned.cleanup(false).expect("cleanup should succeed"));
+        assert!(!cleaned_path.exists());
+
+        config.disposable_workspace_retain_on_failure = Some(true);
+        let mut retained_failure = DisposableWorkspace::prepare(&config)
+            .expect("workspace preparation should succeed")
+            .expect("disposable workspace should be created");
+        let retained_failure_path = retained_failure.worktree_dir.clone();
+        assert!(
+            !retained_failure
+                .cleanup(false)
+                .expect("retention should skip cleanup")
+        );
+        assert!(retained_failure_path.exists());
+        retained_failure.retain_on_failure = false;
+        retained_failure
+            .cleanup(false)
+            .expect("manual cleanup should succeed");
+
+        config.disposable_workspace_retain_on_failure = Some(false);
+        config.disposable_workspace_retain_on_success = Some(true);
+        let mut retained_success = DisposableWorkspace::prepare(&config)
+            .expect("workspace preparation should succeed")
+            .expect("disposable workspace should be created");
+        let retained_success_path = retained_success.worktree_dir.clone();
+        assert!(
+            !retained_success
+                .cleanup(true)
+                .expect("retention should skip cleanup")
+        );
+        assert!(retained_success_path.exists());
+        retained_success.retain_on_success = false;
+        retained_success
+            .cleanup(true)
+            .expect("manual cleanup should succeed");
+    }
+
+    #[test]
+    fn promotion_report_blocks_when_source_head_changes() {
+        let repo = temp_git_repo();
+        let config = disposable_config(repo.path());
+        let workspace = DisposableWorkspace::prepare(&config)
+            .expect("workspace preparation should succeed")
+            .expect("disposable workspace should be created");
+
+        fs::write(repo.path().join("README.md"), "changed in source\n")
+            .expect("source update should be written");
+        run_git(repo.path(), &["add", "README.md"]);
+        run_git(repo.path(), &["commit", "-q", "-m", "source moved"]);
+
+        let report = workspace
+            .promotion_report()
+            .expect("promotion report should be generated");
+
+        assert!(report.contains("Promotion status: BLOCKED"));
+        assert!(report.contains("promotion_status: blocked"));
+        workspace.cleanup(false).expect("cleanup should succeed");
+    }
+
+    #[test]
+    fn promotion_report_fails_when_source_head_lookup_fails() {
+        let source = tempfile::tempdir().expect("temp dir should be created");
+        let worktree = temp_git_repo();
+        let workspace = DisposableWorkspace {
+            source_dir: source.path().to_path_buf(),
+            worktree_dir: worktree.path().to_path_buf(),
+            source_head: "missing".to_string(),
+            retain_on_success: true,
+            retain_on_failure: true,
+        };
+
+        let error = workspace.promotion_report().unwrap_err().to_string();
+
+        assert!(error.contains("failed to look up source HEAD after disposable execution"));
+    }
+
+    #[test]
+    fn promotion_report_fails_when_diff_generation_fails() {
+        let source = temp_git_repo();
+        let worktree = tempfile::tempdir().expect("temp dir should be created");
+        run_git(worktree.path(), &["init", "-q"]);
+        let source_head = git_stdout(source.path(), &["rev-parse", "HEAD"]).unwrap();
+        let workspace = DisposableWorkspace {
+            source_dir: source.path().to_path_buf(),
+            worktree_dir: worktree.path().to_path_buf(),
+            source_head,
+            retain_on_success: true,
+            retain_on_failure: true,
+        };
+
+        let error = workspace.promotion_report().unwrap_err().to_string();
+
+        assert!(error.contains("failed to generate disposable workspace diff"));
+    }
+
+    #[test]
+    fn cleanup_failure_is_reported() {
+        let source = tempfile::tempdir().expect("temp dir should be created");
+        let worktree = tempfile::tempdir().expect("temp dir should be created");
+        let workspace = DisposableWorkspace {
+            source_dir: source.path().to_path_buf(),
+            worktree_dir: worktree.path().to_path_buf(),
+            source_head: "missing".to_string(),
+            retain_on_success: false,
+            retain_on_failure: false,
+        };
+
+        let error = workspace.cleanup(false).unwrap_err().to_string();
+
+        assert!(error.contains("failed to remove disposable git worktree"));
+    }
+
+    #[test]
+    fn disposable_workspace_user_facing_events_are_stable() {
+        let expected = [
+            "disposable_workspace_created",
+            "disposable_workspace_execution_started",
+            "disposable_workspace_validation_passed",
+            "disposable_workspace_validation_failed",
+            "disposable_workspace_promotion_report_created",
+            "disposable_workspace_promotion_pending",
+            "disposable_workspace_cleaned",
+            "disposable_workspace_retained",
+            "disposable_workspace_cleanup_failed",
+        ];
+
+        for name in expected {
+            let formatted = format_forge_event(&RuntimeEvent::ToolResult {
+                name: name.to_string(),
+                success: true,
+                output: Some("ok".to_string()),
+                error: None,
+            });
+            assert!(formatted.contains(name));
         }
     }
 
@@ -1338,8 +2150,8 @@ impl GitGrounding {
         let commit = self
             .head_commit
             .as_ref()
-            .map(|c| &c[..7.min(c.len())])
-            .unwrap_or("???????");
+            .map(|c| crate::text::take_chars(c, 7))
+            .unwrap_or_else(|| "???????".to_string());
         let branch = self.branch_name.as_deref().unwrap_or("(detached)");
         let dirty_marker = if self.is_dirty { "*" } else { "" };
 

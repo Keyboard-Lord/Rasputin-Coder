@@ -79,9 +79,9 @@ fn handle_normal_mode(key: KeyEvent, app: &mut App) -> Result<bool> {
         KeyCode::Char('t') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             if app.can_switch_execution_mode() {
                 let target_mode = match app.state.execution.mode {
-                    ExecutionMode::Chat => ExecutionMode::Edit,
-                    ExecutionMode::Edit => ExecutionMode::Task,
-                    ExecutionMode::Task => ExecutionMode::Chat,
+                    ExecutionMode::Task => ExecutionMode::Edit,
+                    ExecutionMode::Edit => ExecutionMode::Chat,
+                    ExecutionMode::Chat => ExecutionMode::Task,
                 };
                 let _ = app.perform_ui_action(UiAction::SetExecutionMode(target_mode));
             }
@@ -187,9 +187,9 @@ fn handle_editing_mode(key: KeyEvent, app: &mut App) -> Result<bool> {
         KeyCode::Char('t') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             if app.can_switch_execution_mode() {
                 let target_mode = match app.state.execution.mode {
-                    ExecutionMode::Chat => ExecutionMode::Edit,
-                    ExecutionMode::Edit => ExecutionMode::Task,
-                    ExecutionMode::Task => ExecutionMode::Chat,
+                    ExecutionMode::Task => ExecutionMode::Edit,
+                    ExecutionMode::Edit => ExecutionMode::Chat,
+                    ExecutionMode::Chat => ExecutionMode::Task,
                 };
                 let _ = app.perform_ui_action(UiAction::SetExecutionMode(target_mode));
             }

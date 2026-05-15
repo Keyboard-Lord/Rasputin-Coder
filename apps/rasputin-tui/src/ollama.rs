@@ -5,11 +5,13 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
-pub const DEFAULT_CODER_14B_MODEL: &str = "qwen2.5-coder:14b";
-pub const DEFAULT_CODER_14B_Q4KM_TAG: &str = "qwen2.5-coder:14b-q4km";
-pub const DEFAULT_CODER_14B_Q5KM_TAG: &str = "qwen2.5-coder:14b-q5km";
-pub const DEFAULT_CODER_14B_IQ4XS_TAG: &str = "qwen2.5-coder:14b-iq4xs";
-pub const DEFAULT_CODER_14B_Q3KM_TAG: &str = "qwen2.5-coder:14b-q3km";
+pub const DEFAULT_CODER_14B_MODEL: &str = "huihui_ai/deepseek-r1-abliterated:14b";
+// Legacy Qwen model tags preserved for backward compatibility
+pub const LEGACY_QWEN_14B_MODEL: &str = "qwen2.5-coder:14b";
+pub const LEGACY_QWEN_14B_Q4KM_TAG: &str = "qwen2.5-coder:14b-q4km";
+pub const LEGACY_QWEN_14B_Q5KM_TAG: &str = "qwen2.5-coder:14b-q5km";
+pub const LEGACY_QWEN_14B_IQ4XS_TAG: &str = "qwen2.5-coder:14b-iq4xs";
+pub const LEGACY_QWEN_14B_Q3KM_TAG: &str = "qwen2.5-coder:14b-q3km";
 pub const FALLBACK_PLANNER_MODEL: &str = "qwen3.5:latest";
 
 pub struct OllamaClient {
@@ -66,9 +68,7 @@ impl OllamaClient {
 
     pub fn new(endpoint: String) -> Self {
         assert!(
-            endpoint.starts_with("http://127.0.0.1:")
-                || endpoint.starts_with("http://[::1]:")
-                || endpoint.starts_with("http://localhost:"),
+            is_loopback_http_endpoint(&endpoint),
             "Ollama endpoint must be loopback-only"
         );
         let client = Client::builder()
@@ -240,6 +240,25 @@ impl OllamaClient {
     }
 }
 
+fn is_loopback_http_endpoint(endpoint: &str) -> bool {
+    let Some(rest) = endpoint.trim().strip_prefix("http://") else {
+        return false;
+    };
+    let authority = rest.split('/').next().unwrap_or(rest);
+    if authority.contains('@') {
+        return false;
+    }
+
+    if let Some(rest) = authority.strip_prefix("[::1]") {
+        return rest.starts_with(':') && rest.len() > 1;
+    }
+
+    let Some((host, port)) = authority.rsplit_once(':') else {
+        return false;
+    };
+    !port.is_empty() && matches!(host, "127.0.0.1" | "localhost")
+}
+
 #[derive(Debug, Clone)]
 pub struct HealthStatus {
     pub connected: bool,
@@ -274,11 +293,15 @@ pub fn normalize_requested_model(model: &str) -> String {
 
     match normalized.as_str() {
         "" => DEFAULT_CODER_14B_MODEL.to_string(),
-        "14b" | "coder14b" | "qwen14b" | "qwen-coder-14b" => DEFAULT_CODER_14B_MODEL.to_string(),
-        "qwen2.5-coder:14b-q4_k_m" => DEFAULT_CODER_14B_Q4KM_TAG.to_string(),
-        "qwen2.5-coder:14b-q5_k_m" => DEFAULT_CODER_14B_Q5KM_TAG.to_string(),
-        "qwen2.5-coder:14b-iq4_xs" => DEFAULT_CODER_14B_IQ4XS_TAG.to_string(),
-        "qwen2.5-coder:14b-q3_k_m" => DEFAULT_CODER_14B_Q3KM_TAG.to_string(),
+        "14b" | "coder14b" | "deepseek14b" | "deepseek-r1-14b" | "deepseek-abliterated-14b" => {
+            DEFAULT_CODER_14B_MODEL.to_string()
+        }
+        // Legacy Qwen aliases preserved for backward compatibility
+        "qwen14b" | "qwen-coder-14b" => LEGACY_QWEN_14B_MODEL.to_string(),
+        "qwen2.5-coder:14b-q4_k_m" => LEGACY_QWEN_14B_Q4KM_TAG.to_string(),
+        "qwen2.5-coder:14b-q5_k_m" => LEGACY_QWEN_14B_Q5KM_TAG.to_string(),
+        "qwen2.5-coder:14b-iq4_xs" => LEGACY_QWEN_14B_IQ4XS_TAG.to_string(),
+        "qwen2.5-coder:14b-q3_k_m" => LEGACY_QWEN_14B_Q3KM_TAG.to_string(),
         _ => normalized,
     }
 }
@@ -287,38 +310,48 @@ pub fn preferred_model_candidates(model: &str) -> Vec<String> {
     let normalized = normalize_requested_model(model);
     let ordered = match normalized.as_str() {
         DEFAULT_CODER_14B_MODEL => vec![
-            DEFAULT_CODER_14B_Q4KM_TAG,
-            DEFAULT_CODER_14B_Q5KM_TAG,
             DEFAULT_CODER_14B_MODEL,
-            DEFAULT_CODER_14B_IQ4XS_TAG,
-            DEFAULT_CODER_14B_Q3KM_TAG,
+            LEGACY_QWEN_14B_Q4KM_TAG,
+            LEGACY_QWEN_14B_Q5KM_TAG,
+            LEGACY_QWEN_14B_MODEL,
+            LEGACY_QWEN_14B_IQ4XS_TAG,
+            LEGACY_QWEN_14B_Q3KM_TAG,
             FALLBACK_PLANNER_MODEL,
         ],
-        DEFAULT_CODER_14B_Q4KM_TAG => vec![
-            DEFAULT_CODER_14B_Q4KM_TAG,
-            DEFAULT_CODER_14B_Q5KM_TAG,
-            DEFAULT_CODER_14B_MODEL,
+        // Legacy Qwen model support preserved for backward compatibility
+        LEGACY_QWEN_14B_MODEL => vec![
+            LEGACY_QWEN_14B_Q4KM_TAG,
+            LEGACY_QWEN_14B_Q5KM_TAG,
+            LEGACY_QWEN_14B_MODEL,
+            LEGACY_QWEN_14B_IQ4XS_TAG,
+            LEGACY_QWEN_14B_Q3KM_TAG,
             FALLBACK_PLANNER_MODEL,
         ],
-        DEFAULT_CODER_14B_Q5KM_TAG => vec![
-            DEFAULT_CODER_14B_Q5KM_TAG,
-            DEFAULT_CODER_14B_Q4KM_TAG,
-            DEFAULT_CODER_14B_MODEL,
+        LEGACY_QWEN_14B_Q4KM_TAG => vec![
+            LEGACY_QWEN_14B_Q4KM_TAG,
+            LEGACY_QWEN_14B_Q5KM_TAG,
+            LEGACY_QWEN_14B_MODEL,
             FALLBACK_PLANNER_MODEL,
         ],
-        DEFAULT_CODER_14B_IQ4XS_TAG => vec![
-            DEFAULT_CODER_14B_IQ4XS_TAG,
-            DEFAULT_CODER_14B_Q4KM_TAG,
-            DEFAULT_CODER_14B_Q5KM_TAG,
-            DEFAULT_CODER_14B_MODEL,
+        LEGACY_QWEN_14B_Q5KM_TAG => vec![
+            LEGACY_QWEN_14B_Q5KM_TAG,
+            LEGACY_QWEN_14B_Q4KM_TAG,
+            LEGACY_QWEN_14B_MODEL,
             FALLBACK_PLANNER_MODEL,
         ],
-        DEFAULT_CODER_14B_Q3KM_TAG => vec![
-            DEFAULT_CODER_14B_Q3KM_TAG,
-            DEFAULT_CODER_14B_IQ4XS_TAG,
-            DEFAULT_CODER_14B_Q4KM_TAG,
-            DEFAULT_CODER_14B_Q5KM_TAG,
-            DEFAULT_CODER_14B_MODEL,
+        LEGACY_QWEN_14B_IQ4XS_TAG => vec![
+            LEGACY_QWEN_14B_IQ4XS_TAG,
+            LEGACY_QWEN_14B_Q4KM_TAG,
+            LEGACY_QWEN_14B_Q5KM_TAG,
+            LEGACY_QWEN_14B_MODEL,
+            FALLBACK_PLANNER_MODEL,
+        ],
+        LEGACY_QWEN_14B_Q3KM_TAG => vec![
+            LEGACY_QWEN_14B_Q3KM_TAG,
+            LEGACY_QWEN_14B_IQ4XS_TAG,
+            LEGACY_QWEN_14B_Q4KM_TAG,
+            LEGACY_QWEN_14B_Q5KM_TAG,
+            LEGACY_QWEN_14B_MODEL,
             FALLBACK_PLANNER_MODEL,
         ],
         _ => vec![normalized.as_str(), FALLBACK_PLANNER_MODEL],
@@ -391,11 +424,12 @@ fn resolve_quantized_base_fallback(
     requested: &str,
     installed_models: &[InstalledModelCard],
 ) -> Option<String> {
+    // Only applies to legacy Qwen models with quantization variants
     let (base_model, quantization_level) = match requested {
-        DEFAULT_CODER_14B_Q4KM_TAG => (DEFAULT_CODER_14B_MODEL, Some("Q4_K_M")),
-        DEFAULT_CODER_14B_Q5KM_TAG => (DEFAULT_CODER_14B_MODEL, Some("Q5_K_M")),
-        DEFAULT_CODER_14B_IQ4XS_TAG => (DEFAULT_CODER_14B_MODEL, Some("IQ4_XS")),
-        DEFAULT_CODER_14B_Q3KM_TAG => (DEFAULT_CODER_14B_MODEL, Some("Q3_K_M")),
+        LEGACY_QWEN_14B_Q4KM_TAG => (LEGACY_QWEN_14B_MODEL, Some("Q4_K_M")),
+        LEGACY_QWEN_14B_Q5KM_TAG => (LEGACY_QWEN_14B_MODEL, Some("Q5_K_M")),
+        LEGACY_QWEN_14B_IQ4XS_TAG => (LEGACY_QWEN_14B_MODEL, Some("IQ4_XS")),
+        LEGACY_QWEN_14B_Q3KM_TAG => (LEGACY_QWEN_14B_MODEL, Some("Q3_K_M")),
         _ => (requested, None),
     };
 
@@ -435,8 +469,8 @@ fn build_model_error(requested: &str, installed_models: &[InstalledModelCard]) -
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_CODER_14B_MODEL, DEFAULT_CODER_14B_Q4KM_TAG, FALLBACK_PLANNER_MODEL,
-        InstalledModelCard, OllamaClient, normalize_requested_model, resolve_model_name,
+        DEFAULT_CODER_14B_MODEL, FALLBACK_PLANNER_MODEL, InstalledModelCard, LEGACY_QWEN_14B_MODEL,
+        LEGACY_QWEN_14B_Q4KM_TAG, OllamaClient, normalize_requested_model, resolve_model_name,
         should_enable_css_compression,
     };
 
@@ -481,21 +515,30 @@ mod tests {
             normalize_requested_model("coder14b"),
             DEFAULT_CODER_14B_MODEL
         );
+        assert_eq!(
+            normalize_requested_model("deepseek14b"),
+            DEFAULT_CODER_14B_MODEL
+        );
+        // Legacy Qwen aliases preserved for backward compatibility
+        assert_eq!(normalize_requested_model("qwen14b"), LEGACY_QWEN_14B_MODEL);
     }
 
     #[test]
     fn resolves_quantized_alias_to_matching_base_quantization() {
-        let installed = vec![card(DEFAULT_CODER_14B_MODEL, Some("Q4_K_M"))];
+        // Legacy Qwen quantized variant resolution (backward compatibility)
+        let installed = vec![card(LEGACY_QWEN_14B_MODEL, Some("Q4_K_M"))];
         assert_eq!(
-            resolve_model_name(DEFAULT_CODER_14B_Q4KM_TAG, &installed).as_deref(),
-            Some(DEFAULT_CODER_14B_MODEL)
+            resolve_model_name(LEGACY_QWEN_14B_Q4KM_TAG, &installed).as_deref(),
+            Some(LEGACY_QWEN_14B_MODEL)
         );
     }
 
     #[test]
     fn enables_css_for_14b_models() {
         assert!(should_enable_css_compression("coder14b"));
-        assert!(should_enable_css_compression(DEFAULT_CODER_14B_Q4KM_TAG));
+        assert!(should_enable_css_compression("deepseek14b"));
+        assert!(should_enable_css_compression(DEFAULT_CODER_14B_MODEL));
+        assert!(should_enable_css_compression(LEGACY_QWEN_14B_Q4KM_TAG));
         assert!(!should_enable_css_compression(FALLBACK_PLANNER_MODEL));
     }
 
@@ -510,5 +553,11 @@ mod tests {
     #[should_panic(expected = "loopback-only")]
     fn ollama_client_rejects_remote_endpoint() {
         let _ = OllamaClient::new("http://192.168.1.10:11434".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "loopback-only")]
+    fn ollama_client_rejects_userinfo_endpoint_that_starts_with_loopback() {
+        let _ = OllamaClient::new("http://127.0.0.1:11434@example.com".to_string());
     }
 }

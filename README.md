@@ -12,8 +12,8 @@ Rasputin is a local terminal-first coding agent that runs in your terminal, conn
 
 **What You Get**:
 - Terminal chat interface for local LLMs ✓
-- Task-like natural-language input that becomes a bounded autonomous goal ✓
-- Qwen-Coder-first goal planning with deterministic fallback ✓
+- Natural-language Normal Mode: tell Rasputin what you want, and task-like input becomes a bounded plan ✓
+- Local coder-model goal planning with deterministic fallback ✓
 - Bounded, validated code execution through Forge ✓
 - **Multi-step chain execution** with validation gating ✓
 - **5-layer truth hierarchy**: Outcome → Progress → Audit → Replay → Checkpoint ✓
@@ -22,6 +22,11 @@ Rasputin is a local terminal-first coding agent that runs in your terminal, conn
 - **Fail-closed validation** across format → lint → build → test stages ✓
 - **Audit-grounded execution timeline** in inspector with full traceability ✓
 - Stage-oriented runtime surfaces in the inspector ✓
+
+**Normal Mode Usage**:
+Natural language is the primary Normal Mode interface. Type the outcome directly: `build me a SaaS for gym clients`, `clean up this repo`, `fix the warnings`, `run the tests and fix what breaks`, `show me the plan`, or `continue where you left off`. Rasputin wraps task-like input in a Work Session: it classifies the intent, stages a plan when work is broad, uses chain context for follow-ups, prefers disposable worktrees for broad edits, validates before reporting success, and stops for confirmation when risk requires it.
+
+Slash commands remain available for Operator Mode and precision control. Work Sessions are a Normal Mode wrapper around existing chains, validation, and disposable workspace behavior. Natural language does not bypass validation gates, chain policy, approval checks, disposable-workspace behavior, or destructive-command protections.
 
 **What You Don't Get**:
 - Unbounded background autonomy
@@ -70,7 +75,8 @@ Rasputin-1/
 │   └── rasputin-tui/          # User-facing terminal UI (the product)
 ├── crates/
 │   ├── forge-runtime/         # Bounded execution engine (worker process)
-│   └── rasputin-interface/    # Partial orchestration layer (NOT the hot path)
+│   ├── rasputin-interface/    # Partial orchestration layer (NOT the hot path)
+│   └── rasputin-forge/        # Legacy Deep Forge CLI mode (not the TUI hot path)
 ├── docs/                      # 15 canonical docs (01-15)
 │   ├── 01_PROJECT_OVERVIEW.md
 │   ├── 02_ARCHITECTURE.md
@@ -119,9 +125,9 @@ The product has two distinct runtime layers that share a UI shell:
 1. **Rasputin Product State** — long-running TUI state (chat history, repos, preferences)
 2. **Forge Worker State** — per-task execution state (files read, mutations, validation)
 
-**User consequence**: Task-like plain text is treated as a goal, planned with Qwen-Coder, confirmed automatically, and executed through a bounded chain. Question-like chat remains normal Ollama chat and does not mutate the previous Forge task's worker context.
+**User consequence**: Task-like plain text is treated as a Work Session, planned with the configured local coder model, staged for review when risk requires it, and executed through a bounded chain. Question-like chat remains normal Ollama chat and does not mutate the previous Forge task's worker context.
 
-This is **intentional**: autonomy is bounded by step limits, validation gates, approval checkpoints, and worker isolation. See [04_CORE_CONCEPTS.md](docs/04_CORE_CONCEPTS.md) and [14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md](docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md) for the full rationale.
+This is **intentional**: autonomy is bounded by step limits, validation gates, approval checkpoints, and per-task worker processes. See [04_CORE_CONCEPTS.md](docs/04_CORE_CONCEPTS.md) and [14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md](docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md) for the full rationale.
 
 ---
 
@@ -131,16 +137,21 @@ This is **intentional**: autonomy is bounded by step limits, validation gates, a
 
 | Category | What It Is NOT | Why |
 |----------|----------------|-----|
-| **Architecture** | A single shared in-memory model for chat and Forge | Forge worker state is process-isolated by design |
+| **Architecture** | A single shared in-memory model for chat and Forge | Forge worker state is kept in a separate per-task process |
 | **Execution** | An unbounded autonomous daemon | Execution has hard iteration limits and validation gates |
 | **Control** | An approval-driven orchestration system | No mid-task pause/resume within a chain step; resume requires explicit approval |
 | **Tooling** | A general-purpose shell replacement | Planner sees bounded tool surface with mode-gated access |
 | **Infrastructure** | A daemon/service | Process-per-task, no background worker |
+| **Security** | A true OS/container sandbox | Current protection is repository boundary enforcement plus bounded worker execution |
 | **Connectivity** | A cloud-connected product | Local Ollama only—no GPT-4, Claude, or APIs |
 | **UX** | A narrative-driven interface | Backend-shaped event stream by design |
 
 **Correct mental model**: A **bounded, validated, local autonomous SWE loop**—not an unbounded background agent.
 
 **Chain execution exists**: Multi-step chains with validation gating, checkpoints at validated boundaries, and guarded resume with explicit approval.
+
+**Legacy surface**: `crates/rasputin-forge` is the older Deep Forge CLI mode reachable through explicit launcher forge mode. It is maintained as a compatibility/operator surface, not the active TUI-to-`forge_bootstrap` worker path.
+
+**Sandbox status**: Rasputin does not currently provide chroot, jail, container, VM, syscall, OS permission, or network namespace isolation. File tools are bounded by repository path checks and command policy; worker processes are a reliability boundary, not a security sandbox.
 
 If you need continuous background execution, per-action approval inside every worker step, or cloud frontier models, Rasputin **will not meet your needs** in its current form.

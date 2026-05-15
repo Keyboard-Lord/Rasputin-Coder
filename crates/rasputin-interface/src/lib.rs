@@ -1,9 +1,18 @@
 //! Rasputin Interface Layer
 //!
-//! Provides conversational interface, intent refinement, execution orchestration,
-//! and action transparency above the deterministic Forge core.
+//! Transitional interface and transparency primitives above the deterministic
+//! Forge core.
+//!
+//! Current product status: the active TUI hot path uses this crate only for
+//! runtime-event transformation in `apps/rasputin-tui/src/interface_integration.rs`.
+//! The intent, orchestrator, approval, and session modules are retained as
+//! experimental public-ish surfaces until they are either promoted into the hot
+//! path or retired with docs/tests updated.
 
 #![deny(unused_must_use)]
+// See the crate-level status note above. This broad allow is intentionally
+// scoped to the transitional interface crate, whose exported modules are kept
+// for compatibility and roadmap evaluation rather than active TUI control flow.
 #![allow(dead_code)]
 
 pub mod transparency;

@@ -17,6 +17,12 @@ pub struct Repo {
     pub git_detected: bool,
     pub ollama_model: Option<String>,
     pub model_source: Option<String>,
+    pub sandbox_mode: Option<String>,
+    pub sandbox_source: Option<String>,
+    pub disposable_workspace_backend: Option<String>,
+    pub disposable_workspace_retain_on_failure: Option<bool>,
+    pub disposable_workspace_retain_on_success: Option<bool>,
+    pub disposable_workspace_require_explicit_promotion: Option<bool>,
 }
 
 impl Repo {
@@ -58,6 +64,25 @@ impl Repo {
         let model_source = model_config
             .as_ref()
             .map(|config| config.source.to_string());
+        let sandbox_config = workspace_config::discover_workspace_sandbox_mode(path_obj);
+        let sandbox_mode = sandbox_config
+            .as_ref()
+            .map(|config| config.sandbox_mode.clone());
+        let sandbox_source = sandbox_config
+            .as_ref()
+            .map(|config| config.source.to_string());
+        let disposable_workspace_backend = sandbox_config
+            .as_ref()
+            .and_then(|config| config.disposable_backend.clone());
+        let disposable_workspace_retain_on_failure = sandbox_config
+            .as_ref()
+            .and_then(|config| config.retain_on_failure);
+        let disposable_workspace_retain_on_success = sandbox_config
+            .as_ref()
+            .and_then(|config| config.retain_on_success);
+        let disposable_workspace_require_explicit_promotion = sandbox_config
+            .as_ref()
+            .and_then(|config| config.require_explicit_promotion);
 
         if let Some(ref model) = ollama_model {
             info!(
@@ -77,6 +102,12 @@ impl Repo {
             git_detected,
             ollama_model,
             model_source,
+            sandbox_mode,
+            sandbox_source,
+            disposable_workspace_backend,
+            disposable_workspace_retain_on_failure,
+            disposable_workspace_retain_on_success,
+            disposable_workspace_require_explicit_promotion,
         })
     }
 

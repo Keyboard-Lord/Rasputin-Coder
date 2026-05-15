@@ -109,6 +109,54 @@ impl ExecutionMode {
     }
 }
 
+/// Truthful execution containment level.
+///
+/// `RepoBoundaryOnly` is the current default. It is not an OS/container
+/// sandbox; it means file tools enforce repository path boundaries while
+/// command execution remains governed by command policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SandboxMode {
+    None,
+    RepoBoundaryOnly,
+    DisposableWorkspace,
+    ExternalContainer,
+}
+
+impl Default for SandboxMode {
+    fn default() -> Self {
+        Self::RepoBoundaryOnly
+    }
+}
+
+impl SandboxMode {
+    pub fn from_config_value(value: &str) -> Result<Self, ForgeError> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "none" => Ok(Self::None),
+            "repo_boundary_only" | "repo-boundary-only" => Ok(Self::RepoBoundaryOnly),
+            "disposable_workspace" | "disposable-workspace" => Ok(Self::DisposableWorkspace),
+            "external_container" | "external-container" => Ok(Self::ExternalContainer),
+            other => Err(ForgeError::InvalidConfiguration(format!(
+                "unsupported sandbox_mode '{}'; expected none, repo_boundary_only, disposable_workspace, or external_container",
+                other
+            ))),
+        }
+    }
+
+    pub fn as_config_value(&self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::RepoBoundaryOnly => "repo_boundary_only",
+            Self::DisposableWorkspace => "disposable_workspace",
+            Self::ExternalContainer => "external_container",
+        }
+    }
+
+    pub fn is_currently_supported(&self) -> bool {
+        matches!(self, Self::None | Self::RepoBoundaryOnly)
+    }
+}
+
 /// Context passed to tool execution
 #[derive(Debug, Clone)]
 pub struct ExecutionContext {

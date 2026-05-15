@@ -58,7 +58,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect) {
         )])
     } else {
         Line::from(vec![Span::styled(
-            input_buffer,
+            input_buffer.clone(),
             Style::default().fg(colors::TEXT_SOFT),
         )])
     };
@@ -137,7 +137,9 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(footer_right, footer_chunks[3]);
 
     if input_mode == InputMode::Editing && composer_enabled {
-        let cursor_x = editor_inner.x + cursor_position as u16;
+        let cursor_byte = crate::text::clamp_to_char_boundary(&input_buffer, cursor_position);
+        let cursor_col = input_buffer[..cursor_byte].chars().count() as u16;
+        let cursor_x = editor_inner.x + cursor_col.min(editor_inner.width.saturating_sub(1));
         let cursor_y = editor_inner.y;
         f.set_cursor_position(Position::new(cursor_x, cursor_y));
     }
@@ -147,10 +149,11 @@ fn draw_mode_toggle(f: &mut Frame, app: &mut App, area: Rect) {
     // In Normal mode, hide the technical CHAT/EDIT/TASK toggle entirely
     // and show a simple, friendly hint about what the user can do
     if !app.is_operator_mode() {
+        // Work-first hints - Task is default, Chat is secondary
         let hint = match app.state.execution.mode {
-            ExecutionMode::Chat => "Ask questions",
+            ExecutionMode::Task => "Describe work",
             ExecutionMode::Edit => "Describe changes",
-            ExecutionMode::Task => "Give instructions",
+            ExecutionMode::Chat => "Ask questions",
         };
         let simple_hint = Paragraph::new(Line::from(vec![Span::styled(
             format!("◦ {}", hint),
@@ -224,14 +227,5 @@ fn model_status_dot(state: &crate::state::AppState) -> &'static str {
 }
 
 pub fn truncate_label(text: &str, max_len: usize) -> String {
-    if text.chars().count() <= max_len {
-        text.to_string()
-    } else {
-        let mut out = text
-            .chars()
-            .take(max_len.saturating_sub(3))
-            .collect::<String>();
-        out.push_str("...");
-        out
-    }
+    crate::text::truncate_chars(text, max_len)
 }

@@ -6,14 +6,25 @@
 
 | Threat | Mitigation |
 |--------|------------|
-| Arbitrary code execution | Minimal tool surface, no shell in planner tools |
-| File system escape | Repository boundary validation, path traversal checks |
+| Arbitrary code execution | Bounded planner-visible tool surface; direct shell execution is not planner-visible |
+| File system escape | Repository boundary validation, path traversal checks for file tools |
 | Prompt injection | Strict output contract, validation before execution |
 | Resource exhaustion | Bounded iterations, timeouts, process limits |
 | Data exfiltration | Local-only design, no external APIs |
 | State corruption | Integrity hashing, hash chain verification |
 
 ## Security Controls
+
+### 0. Natural-Language Routing Is Not a Safety Bypass
+
+Natural language is the primary Normal Mode interface. Normal Mode accepts phrases such as "clean up this repo", "fix the warnings", "show me the plan", and "continue where you left off". These phrases become Work Sessions routed to existing command, goal, chain, validation, disposable workspace, and stop workflows. The natural-language layer does not execute privileged work on its own.
+
+Safety invariants still apply:
+- Broad repository changes require a staged plan and may require confirmation.
+- Dangerous or destructive wording blocks or requires explicit operator action.
+- Follow-ups require active chain or working-memory context.
+- Disposable workspace behavior remains report-only until explicit promotion exists.
+- Validation failure halts or repairs within chain policy; it does not invent success.
 
 ### 1. Bounded Execution
 
@@ -23,7 +34,7 @@ Hard limits prevent runaway agents:
 - **Timeout**: 30s per planner call
 - **Temperature**: 0.0-0.1 (deterministic)
 
-### 2. Repository Sandboxing
+### 2. Repository Boundary Enforcement
 
 Tools enforce repository boundaries:
 ```rust
@@ -56,43 +67,59 @@ Mutations only persist after validation:
 
 Auto-revert on validation failure (fail-closed: **enabled by default**, can be disabled via configuration).
 
+## Sandbox Status
+
+Rasputin does not currently implement a true OS/container sandbox. Its current safety model is repository boundary enforcement plus bounded worker execution. File tools are restricted to the attached repository path, worker tasks run in separate processes, command execution is allowlisted/time-bounded, and mutations are validation-gated. This reduces accidental damage but does not provide the same guarantees as chroot, containers, VM isolation, seccomp, App Sandbox, or network namespaces.
+
+`disposable_workspace` improves workspace isolation by running TUI-launched tasks in a temporary git worktree and emitting a promotion report instead of mutating the source workspace. It is still not OS-level containment: commands and build scripts execute with the user's permissions inside the disposable worktree.
+
+Disposable workspace behavior is intentionally narrow:
+- Implemented only through TUI-managed execution paths.
+- Direct `forge_bootstrap` execution rejects `disposable_workspace`; the TUI creates the worktree and launches the child runtime with `repo_boundary_only`.
+- Worktrees are created under the system temporary directory and are rejected if the computed path is outside that root.
+- Changed files remain inside the disposable worktree until explicit promotion exists.
+- Promotion is report-only. There is no automatic source workspace mutation.
+- Source HEAD lookup, diff generation, promotion report generation, child spawn failure, cancellation, and cleanup failure are surfaced as failures.
+- `retain_on_failure` and `retain_on_success` preserve worktrees only when explicitly configured.
+
 ### 5. Minimal Tool Surface
 
-Planner sees only 5 tools:
+Planner-visible tools are explicitly registered by runtime policy:
 - `read_file` — Information gathering
 - `write_file` — File creation
 - `apply_patch` — Surgical modification
 - `list_dir` — Directory exploration
 - `grep_search` — Pattern search
+- `dependency_graph` — Bounded dependency inspection
+- `symbol_index` — Bounded symbol inspection
+- `entrypoint_detector` — Entrypoint discovery
+- `lint_runner` — Policy-bounded lint validation
+- `test_runner` — Policy-bounded test validation
 
-No `execute_command` for planner (TUI-only).
+Direct `execute_command` and `browser_preview` remain in the internal registry but are not exposed to the planner-visible runtime tool list.
 
-### 6. Process Isolation
+### 6. Bounded Worker Execution
 
 - One worker process per task
 - Clean termination on completion
 - Worker death doesn't corrupt TUI
 - No shared memory between components
+- Not a security sandbox or arbitrary-code containment boundary
 
 ### 7. Local-Only Design (Architecturally Enforced)
 
 **Ollama HTTP Client Constraint**:
 ```rust
 // ollama.rs - enforced at client construction
-assert!(
-    endpoint.starts_with("http://127.0.0.1:")
-        || endpoint.starts_with("http://[::1]:")
-        || endpoint.starts_with("http://localhost:"),
-    "Ollama endpoint must be loopback-only"
-);
+is_loopback_http_endpoint(endpoint)
 ```
 
 - **Loopback-only HTTP**: Remote Ollama endpoints are **rejected at runtime**
 - **No cloud AI services**: OpenAI, Anthropic, or other cloud APIs are **architecturally inaccessible**
-- **No network egress**: Except loopback Ollama calls
+- **LLM client egress is loopback-only**: Rasputin's Ollama client rejects non-loopback endpoints
 - **No telemetry/analytics**: Zero data collection or external communication
 
-**Security Invariant**: Even with malicious configuration, the system cannot call remote endpoints or cloud APIs.
+**Security Invariant**: Even with malicious model configuration, Rasputin's own LLM client cannot call remote endpoints or cloud APIs. This is not a general network sandbox: build scripts, tests, and subprocesses still run with the user's normal OS permissions unless a future OS/container backend is added.
 
 ## Compliance
 

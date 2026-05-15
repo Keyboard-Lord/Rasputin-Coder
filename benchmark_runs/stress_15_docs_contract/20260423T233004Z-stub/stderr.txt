@@ -1,0 +1,7 @@
+[RUNTIME] Could not inspect installed Ollama models (Planner backend unavailable: Failed to query Ollama tags from http://127.0.0.1:11434: ); using 'qwen2.5-coder:14b' directly.
+[RUNTIME] Using StubPlanner (deterministic)
+[GOVERNANCE] FORGE spec v1.0.0 initialized
+[GOVERNANCE] CSS auto-compression is enabled for 14B+ models.
+[GOVERNANCE] Governance is initialized during Forge runtime startup.
+[GOVERNANCE] Active mutation validation path: execution::ValidationEngine.
+[GOVERNANCE] Runtime contract verified

@@ -24,7 +24,7 @@ The system is intentionally **split** between two distinct runtime layers:
 | **Forge Worker** | Task planning, tool execution, mutation validation, bounded execution | One task = one process |
 
 **Current State**: The trust loop is hardened with:
-- Task-like plain text or `/goal` → Qwen-Coder plan → bounded chain → validate → auto-continue → complete/replay
+- Task-like plain text or `/goal` → local coder-model plan → bounded chain → validate → auto-continue → complete/replay
 - `/plan → /preview → execute → interrupt → resume → complete → replay`
 - Any interrupt at any point has a clear recovery path
 - No silent failures, no stale state confusion
@@ -39,7 +39,7 @@ The system is intentionally **split** between two distinct runtime layers:
 - Syntax, build, and test validation gates
 - Per-task bounded execution (max 10 iterations by default)
 - Deterministic settings (temperature 0.0-0.1, seed 42)
-- Qwen-Coder-first goal planning with deterministic heuristic fallback
+- Local coder-model goal planning with deterministic heuristic fallback
 - **Persistent chains** with step tracking and resume capability
 - **Auto-resume** for autonomous continuation within policy bounds
 - **Risk forecasting** with preview of upcoming steps and detected risks
@@ -50,23 +50,27 @@ Rasputin operates in two experience modes:
 
 | Mode | Audience | Inspector | Status Bar | Composer |
 |------|----------|-----------|------------|----------|
-| **Normal** | Daily users | Manual toggle only | Human-readable: "Working...", "Step 2 of 5" | Conversational hints |
+| **Normal** | Daily users | Manual toggle only | Human-readable: "Working...", "Step 2 of 5" | Natural-language control |
 | **Operator** | Debug/audit | Auto-shows on execution | Technical: Chain IDs, Git SHAs | Full mode toggle [CHAT][EDIT][TASK] |
 
-**Design Philosophy**: Normal mode hides debug machinery. Operator mode exposes all audit surfaces. Toggle via sidebar "View" section.
+**Design Philosophy**: Normal mode is "tell it what you want." Natural language is the primary Normal Mode interface. The router classifies phrases like "clean up this repo", "fix the warnings", "show me the plan", and "continue where you left off" into Work Sessions that wrap the same chains, validation, and disposable workspace behavior used by slash commands. Operator mode keeps slash commands and audit surfaces for precision. Natural language hides machinery; it does not remove validation, chain policy, risk preview, approval checks, or disposable-workspace protections.
+
+Work Sessions show a plain-language summary: objective, current step, validation result, whether the source repo changed, whether a disposable worktree was used, changed file count, and the next suggested action. Operator Mode still exposes technical chain IDs, audit IDs, checkpoint details, raw worker events, and command syntax.
 
 ### Security Posture
 
 - **Local-only Ollama**: HTTP client restricted to `127.0.0.1:11434`, `localhost`, or `[::1]` — remote endpoints are rejected at client construction
 - **No cloud API paths**: System is architecturally incapable of calling OpenAI, Anthropic, or other cloud APIs
 - **Repository boundary enforcement**: All file operations validated against repo root (path traversal blocked)
-- **Command allowlisting**: Shell execution restricted to safe commands (cargo, npm, git, etc.) with destructive operations requiring confirmation
+- **Command allowlisting**: Shell execution restricted to configured commands (cargo, npm, git, etc.) with destructive operations requiring confirmation
+- **No true sandbox yet**: Worker processes and repo path checks reduce accidental damage, but they are not chroot, container, VM, syscall, OS permission, or network namespace isolation
 
 ## What You Don't Get
 
 - Question-like chat automatically mutating prior Forge worker state
 - Mid-task approval checkpoints (chain-level only)
 - Automatic *unbounded* background continuation
+- Guaranteed containment of arbitrary executed code
 - Cloud API integration (OpenAI, Anthropic, etc.)
 - Codebase search within planner context (user must provide paths)
 
@@ -75,7 +79,7 @@ Rasputin operates in two experience modes:
 Rasputin is designed for developers who:
 - Prioritize privacy and local control
 - Accept bounded, deterministic autonomy over unbounded background agents
-- Prefer technical precision over conversational polish
+- Prefer a natural-language default with technical precision available in Operator Mode
 - Are willing to provide explicit file paths and context
 - Value validation-gated code quality over speed
 
@@ -87,9 +91,9 @@ Rasputin is designed for developers who:
 
 # Inside the TUI
 create a Rust CLI that prints hello world
-# or explicitly:
+# or explicitly in Operator Mode:
 /goal create a Rust CLI that prints hello world
-/goal confirm                # Explicit acceptance; task-like plain text queues this automatically
+/goal confirm                # Explicit acceptance for the staged plan
 /plan                        # Show multi-step plan
 /preview                     # Forecast risks and preview execution
 /stop                        # Interrupt if needed
@@ -153,7 +157,7 @@ This positions Rasputin as the self-hosted, privacy-preserving alternative to cl
 - `crates/forge-runtime` is the active bounded execution engine
 - Chain execution with multi-step task chains and validation gating
 - Natural-language task-like input routes into goal planning and bounded execution
-- Qwen-Coder-first goal planning with fallback to the deterministic heuristic planner
+- Local coder-model goal planning with fallback to the deterministic heuristic planner
 - Checkpoints with validated state saved after each successful chain step
 - Guarded resume plus auto-resume for accepted goal chains
 - Fail-closed validation across format → build → test stages

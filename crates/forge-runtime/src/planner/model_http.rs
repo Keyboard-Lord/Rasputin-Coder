@@ -9,11 +9,13 @@ use crate::planner::traits::Planner;
 use crate::types::{ForgeError, PlannerOutput};
 use std::time::{Duration, Instant};
 
-pub const DEFAULT_CODER_14B_MODEL: &str = "qwen2.5-coder:14b";
-pub const DEFAULT_CODER_14B_Q4KM_TAG: &str = "qwen2.5-coder:14b-q4km";
-pub const DEFAULT_CODER_14B_Q5KM_TAG: &str = "qwen2.5-coder:14b-q5km";
-pub const DEFAULT_CODER_14B_IQ4XS_TAG: &str = "qwen2.5-coder:14b-iq4xs";
-pub const DEFAULT_CODER_14B_Q3KM_TAG: &str = "qwen2.5-coder:14b-q3km";
+pub const DEFAULT_CODER_14B_MODEL: &str = "huihui_ai/deepseek-r1-abliterated:14b";
+// Legacy Qwen model tags preserved for backward compatibility
+pub const LEGACY_QWEN_14B_MODEL: &str = "qwen2.5-coder:14b";
+pub const LEGACY_QWEN_14B_Q4KM_TAG: &str = "qwen2.5-coder:14b-q4km";
+pub const LEGACY_QWEN_14B_Q5KM_TAG: &str = "qwen2.5-coder:14b-q5km";
+pub const LEGACY_QWEN_14B_IQ4XS_TAG: &str = "qwen2.5-coder:14b-iq4xs";
+pub const LEGACY_QWEN_14B_Q3KM_TAG: &str = "qwen2.5-coder:14b-q3km";
 pub const FALLBACK_PLANNER_MODEL: &str = "qwen3.5:latest";
 
 pub fn normalize_requested_model(model: &str) -> String {
@@ -21,11 +23,15 @@ pub fn normalize_requested_model(model: &str) -> String {
 
     match normalized.as_str() {
         "" => DEFAULT_CODER_14B_MODEL.to_string(),
-        "14b" | "coder14b" | "qwen14b" | "qwen-coder-14b" => DEFAULT_CODER_14B_MODEL.to_string(),
-        "qwen2.5-coder:14b-q4_k_m" => DEFAULT_CODER_14B_Q4KM_TAG.to_string(),
-        "qwen2.5-coder:14b-q5_k_m" => DEFAULT_CODER_14B_Q5KM_TAG.to_string(),
-        "qwen2.5-coder:14b-iq4_xs" => DEFAULT_CODER_14B_IQ4XS_TAG.to_string(),
-        "qwen2.5-coder:14b-q3_k_m" => DEFAULT_CODER_14B_Q3KM_TAG.to_string(),
+        "14b" | "coder14b" | "deepseek14b" | "deepseek-r1-14b" | "deepseek-abliterated-14b" => {
+            DEFAULT_CODER_14B_MODEL.to_string()
+        }
+        // Legacy Qwen aliases preserved for backward compatibility
+        "qwen14b" | "qwen-coder-14b" => LEGACY_QWEN_14B_MODEL.to_string(),
+        "qwen2.5-coder:14b-q4_k_m" => LEGACY_QWEN_14B_Q4KM_TAG.to_string(),
+        "qwen2.5-coder:14b-q5_k_m" => LEGACY_QWEN_14B_Q5KM_TAG.to_string(),
+        "qwen2.5-coder:14b-iq4_xs" => LEGACY_QWEN_14B_IQ4XS_TAG.to_string(),
+        "qwen2.5-coder:14b-q3_k_m" => LEGACY_QWEN_14B_Q3KM_TAG.to_string(),
         _ => normalized,
     }
 }
@@ -34,38 +40,48 @@ pub fn preferred_model_candidates(model: &str) -> Vec<String> {
     let normalized = normalize_requested_model(model);
     let ordered = match normalized.as_str() {
         DEFAULT_CODER_14B_MODEL => vec![
-            DEFAULT_CODER_14B_Q4KM_TAG,
-            DEFAULT_CODER_14B_Q5KM_TAG,
             DEFAULT_CODER_14B_MODEL,
-            DEFAULT_CODER_14B_IQ4XS_TAG,
-            DEFAULT_CODER_14B_Q3KM_TAG,
+            LEGACY_QWEN_14B_Q4KM_TAG,
+            LEGACY_QWEN_14B_Q5KM_TAG,
+            LEGACY_QWEN_14B_MODEL,
+            LEGACY_QWEN_14B_IQ4XS_TAG,
+            LEGACY_QWEN_14B_Q3KM_TAG,
             FALLBACK_PLANNER_MODEL,
         ],
-        DEFAULT_CODER_14B_Q4KM_TAG => vec![
-            DEFAULT_CODER_14B_Q4KM_TAG,
-            DEFAULT_CODER_14B_Q5KM_TAG,
-            DEFAULT_CODER_14B_MODEL,
+        // Legacy Qwen model support preserved for backward compatibility
+        LEGACY_QWEN_14B_MODEL => vec![
+            LEGACY_QWEN_14B_Q4KM_TAG,
+            LEGACY_QWEN_14B_Q5KM_TAG,
+            LEGACY_QWEN_14B_MODEL,
+            LEGACY_QWEN_14B_IQ4XS_TAG,
+            LEGACY_QWEN_14B_Q3KM_TAG,
             FALLBACK_PLANNER_MODEL,
         ],
-        DEFAULT_CODER_14B_Q5KM_TAG => vec![
-            DEFAULT_CODER_14B_Q5KM_TAG,
-            DEFAULT_CODER_14B_Q4KM_TAG,
-            DEFAULT_CODER_14B_MODEL,
+        LEGACY_QWEN_14B_Q4KM_TAG => vec![
+            LEGACY_QWEN_14B_Q4KM_TAG,
+            LEGACY_QWEN_14B_Q5KM_TAG,
+            LEGACY_QWEN_14B_MODEL,
             FALLBACK_PLANNER_MODEL,
         ],
-        DEFAULT_CODER_14B_IQ4XS_TAG => vec![
-            DEFAULT_CODER_14B_IQ4XS_TAG,
-            DEFAULT_CODER_14B_Q4KM_TAG,
-            DEFAULT_CODER_14B_Q5KM_TAG,
-            DEFAULT_CODER_14B_MODEL,
+        LEGACY_QWEN_14B_Q5KM_TAG => vec![
+            LEGACY_QWEN_14B_Q5KM_TAG,
+            LEGACY_QWEN_14B_Q4KM_TAG,
+            LEGACY_QWEN_14B_MODEL,
             FALLBACK_PLANNER_MODEL,
         ],
-        DEFAULT_CODER_14B_Q3KM_TAG => vec![
-            DEFAULT_CODER_14B_Q3KM_TAG,
-            DEFAULT_CODER_14B_IQ4XS_TAG,
-            DEFAULT_CODER_14B_Q4KM_TAG,
-            DEFAULT_CODER_14B_Q5KM_TAG,
-            DEFAULT_CODER_14B_MODEL,
+        LEGACY_QWEN_14B_IQ4XS_TAG => vec![
+            LEGACY_QWEN_14B_IQ4XS_TAG,
+            LEGACY_QWEN_14B_Q4KM_TAG,
+            LEGACY_QWEN_14B_Q5KM_TAG,
+            LEGACY_QWEN_14B_MODEL,
+            FALLBACK_PLANNER_MODEL,
+        ],
+        LEGACY_QWEN_14B_Q3KM_TAG => vec![
+            LEGACY_QWEN_14B_Q3KM_TAG,
+            LEGACY_QWEN_14B_IQ4XS_TAG,
+            LEGACY_QWEN_14B_Q4KM_TAG,
+            LEGACY_QWEN_14B_Q5KM_TAG,
+            LEGACY_QWEN_14B_MODEL,
             FALLBACK_PLANNER_MODEL,
         ],
         _ => vec![normalized.as_str(), FALLBACK_PLANNER_MODEL],
@@ -731,8 +747,13 @@ mod tests {
             DEFAULT_CODER_14B_MODEL
         );
         assert_eq!(
+            normalize_requested_model("deepseek14b"),
+            DEFAULT_CODER_14B_MODEL
+        );
+        // Legacy Qwen aliases preserved for backward compatibility
+        assert_eq!(
             normalize_requested_model("qwen2.5-coder:14b-q4_k_m"),
-            DEFAULT_CODER_14B_Q4KM_TAG
+            LEGACY_QWEN_14B_Q4KM_TAG
         );
     }
 
@@ -741,11 +762,12 @@ mod tests {
         assert_eq!(
             preferred_model_candidates("14b"),
             vec![
-                DEFAULT_CODER_14B_Q4KM_TAG.to_string(),
-                DEFAULT_CODER_14B_Q5KM_TAG.to_string(),
                 DEFAULT_CODER_14B_MODEL.to_string(),
-                DEFAULT_CODER_14B_IQ4XS_TAG.to_string(),
-                DEFAULT_CODER_14B_Q3KM_TAG.to_string(),
+                LEGACY_QWEN_14B_Q4KM_TAG.to_string(),
+                LEGACY_QWEN_14B_Q5KM_TAG.to_string(),
+                LEGACY_QWEN_14B_MODEL.to_string(),
+                LEGACY_QWEN_14B_IQ4XS_TAG.to_string(),
+                LEGACY_QWEN_14B_Q3KM_TAG.to_string(),
                 FALLBACK_PLANNER_MODEL.to_string(),
             ]
         );
@@ -753,8 +775,12 @@ mod tests {
 
     #[test]
     fn enables_css_for_14b_models() {
-        assert!(should_enable_css_compression("qwen2.5-coder:14b"));
+        assert!(should_enable_css_compression(
+            "huihui_ai/deepseek-r1-abliterated:14b"
+        ));
+        assert!(should_enable_css_compression("deepseek14b"));
         assert!(should_enable_css_compression("coder14b"));
+        assert!(should_enable_css_compression(LEGACY_QWEN_14B_MODEL));
         assert!(!should_enable_css_compression("qwen3.5:latest"));
     }
 

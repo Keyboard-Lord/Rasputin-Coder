@@ -3,6 +3,11 @@
 # RASPUTIN BOOT SEQUENCE
 # Deterministic Local Coding System
 #
+# Usage:
+#   rasputin                    - Launch interactive TUI mode
+#   rasputin tui [path]         - Launch TUI mode (explicit)
+#   rasputin forge <path>       - Launch Deep Forge autonomous mode
+#
 
 set -euo pipefail
 
@@ -11,11 +16,53 @@ set -euo pipefail
 # ------------------------------------------------------------------------------
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WORKSPACE_PATH="${1:-$(pwd)}"
 CONFIG_FILE="$ROOT_DIR/rasputin.json"
 REQUIRED_MODEL="qwen2.5-coder:14b"
 OLLAMA_HOST="${OLLAMA_HOST:-http://localhost:11434}"
 PROFILE_NAME="Rasputin OCR"
+
+# Parse command mode
+RASPUTIN_MODE="tui"
+WORKSPACE_PATH=""
+
+if [[ $# -gt 0 ]]; then
+    case "$1" in
+        forge|f)
+            RASPUTIN_MODE="forge"
+            WORKSPACE_PATH="${2:-$(pwd)}"
+            ;;
+        tui|t)
+            RASPUTIN_MODE="tui"
+            WORKSPACE_PATH="${2:-$(pwd)}"
+            ;;
+        --help|-h)
+            echo "Usage: rasputin [MODE] [PATH]"
+            echo ""
+            echo "Modes:"
+            echo "  (none)       Launch interactive TUI mode (default)"
+            echo "  tui [path]   Launch TUI mode explicitly"
+            echo "  forge <path> Launch Deep Forge autonomous mode"
+            echo ""
+            echo "Deep Forge: Air-gapped, self-exhausting code refinement"
+            echo "  - 100% local operation via Ollama"
+            echo "  - Runs until no flaws remain"
+            echo "  - Auto-commits fixes with git"
+            echo ""
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+        *)
+            # Assume it's a path
+            WORKSPACE_PATH="$1"
+            ;;
+    esac
+else
+    WORKSPACE_PATH="$(pwd)"
+fi
 
 # ANSI color codes
 CLR_RESET="\033[0m"
@@ -209,34 +256,71 @@ stage_runtime() {
     # Check if already built
     local target_dir="$ROOT_DIR/target"
     local tui_bin="$target_dir/debug/rasputin-tui"
-    local release_bin="$target_dir/release/rasputin-tui"
+    local forge_bin="$target_dir/debug/rasputin-forge"
+    local release_tui="$target_dir/release/rasputin-tui"
+    local release_forge="$target_dir/release/rasputin-forge"
     
-    if [[ -x "$release_bin" ]]; then
-        print_ready
-        echo -e "  ${CLR_DIM}(release)${CLR_RESET}"
-    elif [[ -x "$tui_bin" ]]; then
-        # Check if source is newer than binary
-        local newest_source=$(find "$ROOT_DIR/apps" "$ROOT_DIR/crates" -name "*.rs" -type f -newer "$tui_bin" 2>/dev/null | head -1)
-        if [[ -n "$newest_source" ]]; then
-            echo -e "${CLR_YELLOW}STALE${CLR_RESET}"
-            build_runtime
+    local need_build=false
+    
+    if [[ "$RASPUTIN_MODE" == "forge" ]]; then
+        # Check for forge binary
+        if [[ -x "$release_forge" ]]; then
+            print_ready
+            echo -e "  ${CLR_DIM}(release - Deep Forge)${CLR_RESET}"
+        elif [[ -x "$forge_bin" ]]; then
+            # Check if source is newer than binary
+            local newest_source=$(find "$ROOT_DIR/crates/rasputin-forge" -name "*.rs" -type f -newer "$forge_bin" 2>/dev/null | head -1)
+            if [[ -n "$newest_source" ]]; then
+                echo -e "${CLR_YELLOW}STALE${CLR_RESET}"
+                need_build=true
+            else
+                print_cached
+                echo -e "  ${CLR_DIM}(debug - Deep Forge)${CLR_RESET}"
+            fi
         else
-            print_cached
-            echo -e "  ${CLR_DIM}(debug)${CLR_RESET}"
+            echo -e "${CLR_YELLOW}BUILD REQUIRED${CLR_RESET}"
+            need_build=true
         fi
     else
-        echo -e "${CLR_YELLOW}BUILD REQUIRED${CLR_RESET}"
+        # Check for TUI binary
+        if [[ -x "$release_tui" ]]; then
+            print_ready
+            echo -e "  ${CLR_DIM}(release - TUI)${CLR_RESET}"
+        elif [[ -x "$tui_bin" ]]; then
+            # Check if source is newer than binary
+            local newest_source=$(find "$ROOT_DIR/apps" "$ROOT_DIR/crates" -name "*.rs" -type f -newer "$tui_bin" 2>/dev/null | head -1)
+            if [[ -n "$newest_source" ]]; then
+                echo -e "${CLR_YELLOW}STALE${CLR_RESET}"
+                need_build=true
+            else
+                print_cached
+                echo -e "  ${CLR_DIM}(debug - TUI)${CLR_RESET}"
+            fi
+        else
+            echo -e "${CLR_YELLOW}BUILD REQUIRED${CLR_RESET}"
+            need_build=true
+        fi
+    fi
+    
+    if [[ "$need_build" == true ]]; then
         build_runtime
     fi
+    
     sleep $DELAY_STAGE
 }
 
 build_runtime() {
     echo ""
-    echo -e "  ${CLR_DIM}→ Building workspace...${CLR_RESET}"
+    
+    local build_target="rasputin-tui"
+    if [[ "$RASPUTIN_MODE" == "forge" ]]; then
+        build_target="rasputin-forge"
+    fi
+    
+    echo -e "  ${CLR_DIM}→ Building ${build_target}...${CLR_RESET}"
     echo ""
     
-    if cargo build -p rasputin-tui 2>&1 | while read line; do
+    if cargo build -p "$build_target" 2>&1 | while read line; do
         echo -e "    ${CLR_DIM}$line${CLR_RESET}"
     done; then
         echo ""
@@ -379,21 +463,41 @@ stage_session() {
 # ------------------------------------------------------------------------------
 
 stage_interface() {
-    print_stage "6" "INTERFACE"
-    
-    print_check "TUI initialization"
-    print_ready
-    sleep $DELAY_CHECK
-    
-    print_check "Terminal state"
-    local term_info="${TERM:-unknown}"
-    local dims="$(tput cols 2>/dev/null || echo 80)x$(tput lines 2>/dev/null || echo 24)"
-    echo -e "${CLR_DIM}${term_info} (${dims})${CLR_RESET}"
-    sleep $DELAY_CHECK
-    
-    print_check "Handoff"
-    echo -e "${CLR_GREEN}READY${CLR_RESET}"
-    sleep $DELAY_STAGE
+    if [[ "$RASPUTIN_MODE" == "forge" ]]; then
+        print_stage "6" "DEEP FORGE"
+        
+        print_check "Autonomous mode"
+        echo -e "${CLR_GREEN}ACTIVE${CLR_RESET}"
+        sleep $DELAY_CHECK
+        
+        print_check "Air-gapped operation"
+        echo -e "${CLR_GREEN}ENABLED${CLR_RESET}"
+        sleep $DELAY_CHECK
+        
+        print_check "Target repository"
+        echo -e "${CLR_DIM}${WORKSPACE_PATH}${CLR_RESET}"
+        sleep $DELAY_CHECK
+        
+        print_check "Self-exhausting loop"
+        echo -e "${CLR_GREEN}ARMED${CLR_RESET}"
+        sleep $DELAY_STAGE
+    else
+        print_stage "6" "INTERFACE"
+        
+        print_check "TUI initialization"
+        print_ready
+        sleep $DELAY_CHECK
+        
+        print_check "Terminal state"
+        local term_info="${TERM:-unknown}"
+        local dims="$(tput cols 2>/dev/null || echo 80)x$(tput lines 2>/dev/null || echo 24)"
+        echo -e "${CLR_DIM}${term_info} (${dims})${CLR_RESET}"
+        sleep $DELAY_CHECK
+        
+        print_check "Handoff"
+        echo -e "${CLR_GREEN}READY${CLR_RESET}"
+        sleep $DELAY_STAGE
+    fi
 }
 
 # ------------------------------------------------------------------------------
@@ -420,21 +524,39 @@ main() {
     # Final separator
     print_separator
     
-    # Handoff message
-    echo -e "  ${CLR_BOLD}${CLR_CYAN}SYSTEM ONLINE${CLR_RESET}"
-    echo ""
-    echo -e "  ${CLR_DIM}Launching interface...${CLR_RESET}"
-    echo ""
-    
-    # Brief pause before handoff
-    sleep 0.5
-    
-    # Clear screen again for clean TUI entry
-    clear 2>/dev/null || printf '\033[2J\033[H'
-    
-    # Execute the TUI
-    cd "$ROOT_DIR"
-    exec cargo run --quiet -p rasputin-tui -- "$WORKSPACE_PATH"
+    if [[ "$RASPUTIN_MODE" == "forge" ]]; then
+        # Deep Forge mode
+        echo -e "  ${CLR_BOLD}${CLR_MAGENTA}DEEP FORGE ENGAGED${CLR_RESET}"
+        echo ""
+        echo -e "  ${CLR_DIM}Target: ${WORKSPACE_PATH}${CLR_RESET}"
+        echo -e "  ${CLR_DIM}Mode: Autonomous refinement${CLR_RESET}"
+        echo ""
+        echo -e "  ${CLR_YELLOW}Warning: This will modify files and create git commits${CLR_RESET}"
+        echo ""
+        
+        # Brief pause before handoff
+        sleep 1.0
+        
+        # Execute Deep Forge
+        cd "$ROOT_DIR"
+        exec cargo run --quiet -p rasputin-forge -- --target "$WORKSPACE_PATH"
+    else
+        # TUI mode
+        echo -e "  ${CLR_BOLD}${CLR_CYAN}SYSTEM ONLINE${CLR_RESET}"
+        echo ""
+        echo -e "  ${CLR_DIM}Launching interface...${CLR_RESET}"
+        echo ""
+        
+        # Brief pause before handoff
+        sleep 0.5
+        
+        # Clear screen again for clean TUI entry
+        clear 2>/dev/null || printf '\033[2J\033[H'
+        
+        # Execute the TUI
+        cd "$ROOT_DIR"
+        exec cargo run --quiet -p rasputin-tui -- "$WORKSPACE_PATH"
+    fi
 }
 
 # ------------------------------------------------------------------------------

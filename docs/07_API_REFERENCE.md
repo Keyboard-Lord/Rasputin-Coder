@@ -1,6 +1,27 @@
 # Rasputin API Reference
 
+## Natural-Language Normal Mode
+
+Natural language is the primary Normal Mode interface: type the outcome directly. The router maps natural-language intents into Work Sessions, which wrap the same internal command, goal, chain, validation, disposable workspace, and stop workflows used by slash commands.
+
+| Example input | Intent | Internal route |
+|---------------|--------|----------------|
+| `build me a SaaS for gym clients` | Generate app | Staged goal plan, broad-work confirmation |
+| `clean up this repo` | Repo cleanup | Bounded goal plan, disposable workspace preferred |
+| `fix the warnings` | Fix failure | Warning audit and repair plan |
+| `audit the docs` | Audit docs | Documentation audit goal |
+| `run tests and fix what breaks` | Run validation + repair | Validation-first repair plan |
+| `continue where you left off` | Continue work | Active chain or working-memory follow-up |
+| `show me the plan` | Show plan | `/plan` equivalent |
+| `summarize what happened` | Summarize work | Active chain/status summary |
+| `stop` | Stop work | `/stop` equivalent |
+| `what is Rust ownership?` | Chat question | Plain chat; no mutation |
+
+Natural language is not a bypass. Broad or risky work can still require preview or confirmation, dangerous actions can still block, and validation/chain/disposable-workspace policy remains enforced. Disposable workspace is source-workspace protection, not a true OS/container sandbox.
+
 ## Slash Commands (User Interface)
+
+Slash commands are still available for Operator Mode, precise control, and automation.
 
 | Command | Arguments | Purpose |
 |---------|-----------|---------|
@@ -13,7 +34,7 @@
 | `/config set planner_model <tag>` | Model tag | Same as `/model` |
 | `/status` | None | Show runtime status |
 | `/validate` | None | Run TUI validation pipeline |
-| `/goal <description>` | Goal statement | Plan with Qwen-Coder and stage a bounded chain |
+| `/goal <description>` | Goal statement | Plan with the configured local coder model and stage a bounded chain |
 | `/goal confirm` | None | Accept staged goal plan and start bounded execution |
 | Task-like plain text | Natural-language work request | Auto-route through goal planning and queued confirmation |
 | `/task <description>` | Task description | Legacy/manual Forge task entrypoint |
@@ -356,9 +377,10 @@ pub struct RuntimeConfig {
     pub task: String,                // Task description
     pub auto_revert: bool,           // Default: true
     pub mode: ExecutionMode,         // Default: Edit
+    pub sandbox_mode: SandboxMode,   // Default: RepoBoundaryOnly
     pub planner_type: String,        // Default: "http"
     pub planner_endpoint: String,    // Default: http://127.0.0.1:11434
-    pub planner_model: String,       // Default: qwen2.5-coder:14b
+    pub planner_model: String,       // Default: huihui_ai/deepseek-r1-abliterated:14b
     pub planner_timeout_seconds: u32, // Default: 30
     pub planner_temperature: f32,    // Default: 0.0
     pub planner_seed: u64,           // Default: 42
@@ -374,6 +396,7 @@ pub struct RuntimeConfig {
 | `FORGE_PLANNER_ENDPOINT` | Ollama URL | http://127.0.0.1:11434 |
 | `FORGE_PLANNER_TEMPERATURE` | Planner temperature | 0.0 |
 | `FORGE_PLANNER_SEED` | Random seed | 42 |
+| `FORGE_SANDBOX_MODE` | Execution containment label | repo_boundary_only |
 | `FORGE_CSS_COMPRESSION` | Enable compression | false (auto for 14B+) |
 | `FORGE_OUTPUT_MODE` | Output format | human (or jsonl) |
 | `FORGE_RUNTIME_BIN` | Worker binary path | auto-detected |

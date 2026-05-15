@@ -1,7 +1,7 @@
 //! Execute Command Tool for Forge
 //!
 //! Executes shell commands with strict safety controls:
-//! - Allowlist of safe commands (cargo, npm, python, rustc, etc.)
+//! - Allowlist of configured commands (cargo, npm, python, rustc, etc.)
 //! - Timeout enforcement to prevent hung processes
 //! - Working directory validation (repo boundary)
 //! - Output capture with size limits
@@ -125,7 +125,7 @@ fn validate_command_safety(command: &str, args: &[String]) -> CommandSafety {
     if !SAFE_COMMAND_ALLOWLIST.contains(&command) {
         return CommandSafety::Blocked {
             reason: format!(
-                "Command '{}' is not in the safe command allowlist. \
+                "Command '{}' is not in the configured command allowlist. \
                  Allowed commands: {:?}",
                 command, SAFE_COMMAND_ALLOWLIST
             ),
@@ -178,7 +178,7 @@ fn contains_shell_metacharacters(s: &str) -> bool {
 /// - command: Command string to execute (required)
 /// - working_dir: Working directory for execution (optional, defaults to repo root)
 /// - timeout_seconds: Maximum execution time (default: 30, max: 300)
-/// - require_confirmation: Override to require confirmation even for safe commands
+/// - require_confirmation: Override to require confirmation even for configured commands
 /// - capture_stderr: Whether to include stderr in output (default: true)
 /// - max_output_lines: Maximum lines to return in output (default: 1000)
 ///

@@ -1,7 +1,7 @@
 //! Chain Executor - Bounded Multi-Step Task Execution
 //!
 //! Executes task chains one step at a time with validation gating.
-//! Each step runs as an isolated bounded execution, preserving
+//! Each step runs as a separate bounded worker execution, preserving
 //! all existing runtime invariants.
 
 use crate::types::{

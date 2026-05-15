@@ -1,0 +1,286 @@
+{
+  "run_id": "20260427T001140Z-planner-stub",
+  "timestamp": "2026-04-27T00:11:41.754593+00:00",
+  "planner_type": "stub",
+  "overall_score": "PARTIAL",
+  "scenarios": [
+    {
+      "scenario_name": "artifact_contract_continuation",
+      "passed": false,
+      "turns": [
+        {
+          "turn_number": 1,
+          "user_input": "Create exactly 5 markdown documentation files with these precise filenames:\n1. d",
+          "route_chosen": "UNKNOWN",
+          "resolved_task": "Create exactly 5 markdown documentation files with these precise filenames:\n1. d",
+          "files_before": [
+            "Cargo.toml",
+            "README.md",
+            "src/lib.rs"
+          ],
+          "files_after": [
+            "Cargo.toml",
+            "README.md",
+            "docs/01_OVERVIEW.md",
+            "docs/02_SETUP.md",
+            "docs/03_USAGE.md",
+            "docs/04_API.md",
+            "src/lib.rs"
+          ],
+          "validation_passed": null,
+          "drift_flags": [],
+          "notes": "Error: rc=1"
+        },
+        {
+          "turn_number": 2,
+          "user_input": "continue",
+          "route_chosen": "UNKNOWN",
+          "resolved_task": null,
+          "files_before": [
+            "Cargo.toml",
+            "README.md",
+            "docs/01_OVERVIEW.md",
+            "docs/02_SETUP.md",
+            "docs/03_USAGE.md",
+            "docs/04_API.md",
+            "src/lib.rs"
+          ],
+          "files_after": [
+            "Cargo.toml",
+            "README.md",
+            "docs/01_OVERVIEW.md",
+            "docs/02_SETUP.md",
+            "docs/03_USAGE.md",
+            "docs/04_API.md",
+            "hello.txt",
+            "src/lib.rs"
+          ],
+          "validation_passed": null,
+          "drift_flags": [
+            "Turn 2 routed as 'UNKNOWN' instead of 'FOLLOW_UP'",
+            "Turn 2 resolved task doesn't reference original contract: None"
+          ],
+          "notes": "Error: rc=1"
+        }
+      ],
+      "final_score": "PARTIAL",
+      "summary": "Created 4/5 docs, route=UNKNOWN, drifts=3"
+    },
+    {
+      "scenario_name": "finish_remaining",
+      "passed": true,
+      "turns": [
+        {
+          "turn_number": 1,
+          "user_input": "Create exactly 4 config files:\n1. config/app.toml\n2. config/database.toml\n3. con",
+          "route_chosen": "UNKNOWN",
+          "resolved_task": "Create exactly 4 config files:\n1. config/app.toml\n2. config/database.toml\n3. con",
+          "files_before": [
+            "Cargo.toml",
+            "README.md",
+            "src/lib.rs"
+          ],
+          "files_after": [
+            "Cargo.toml",
+            "README.md",
+            "config/app.toml",
+            "config/cache.toml",
+            "config/database.toml",
+            "config/logging.toml",
+            "src/lib.rs"
+          ],
+          "validation_passed": null,
+          "drift_flags": [],
+          "notes": "Initial request"
+        },
+        {
+          "turn_number": 2,
+          "user_input": "finish the remaining files",
+          "route_chosen": "UNKNOWN",
+          "resolved_task": null,
+          "files_before": [
+            "Cargo.toml",
+            "README.md",
+            "config/app.toml",
+            "config/cache.toml",
+            "config/database.toml",
+            "config/logging.toml",
+            "src/lib.rs"
+          ],
+          "files_after": [
+            "Cargo.toml",
+            "README.md",
+            "config/app.toml",
+            "config/cache.toml",
+            "config/database.toml",
+            "config/logging.toml",
+            "hello.txt",
+            "src/lib.rs"
+          ],
+          "validation_passed": null,
+          "drift_flags": [
+            "Routed as UNKNOWN not FOLLOW_UP"
+          ],
+          "notes": "Finish remaining"
+        }
+      ],
+      "final_score": "PASS",
+      "summary": "Created 4/4 config files"
+    },
+    {
+      "scenario_name": "fix_that",
+      "passed": false,
+      "turns": [
+        {
+          "turn_number": 1,
+          "user_input": "Create a function in src/calculator.rs that adds two numbers but has a compile e",
+          "route_chosen": "UNKNOWN",
+          "resolved_task": "Create a function in src/calculator.rs that adds two numbers but has a compile e",
+          "files_before": [
+            "Cargo.toml",
+            "README.md",
+            "src/lib.rs"
+          ],
+          "files_after": [
+            "Cargo.toml",
+            "README.md",
+            "hello.txt",
+            "src/lib.rs"
+          ],
+          "validation_passed": null,
+          "drift_flags": [],
+          "notes": "Create code with error"
+        },
+        {
+          "turn_number": 2,
+          "user_input": "fix that",
+          "route_chosen": "UNKNOWN",
+          "resolved_task": null,
+          "files_before": [
+            "Cargo.toml",
+            "README.md",
+            "hello.txt",
+            "src/lib.rs"
+          ],
+          "files_after": [
+            "Cargo.toml",
+            "README.md",
+            "hello.txt",
+            "src/lib.rs"
+          ],
+          "validation_passed": null,
+          "drift_flags": [
+            "Routed as UNKNOWN not FOLLOW_UP"
+          ],
+          "notes": "Fix follow-up"
+        }
+      ],
+      "final_score": "FAIL",
+      "summary": "Route=UNKNOWN, resolved=False"
+    },
+    {
+      "scenario_name": "improve_refine",
+      "passed": false,
+      "turns": [
+        {
+          "turn_number": 1,
+          "user_input": "Create a simple README with basic project info.",
+          "route_chosen": "UNKNOWN",
+          "resolved_task": "Create a simple README with basic project info.",
+          "files_before": [
+            "Cargo.toml",
+            "README.md",
+            "src/lib.rs"
+          ],
+          "files_after": [
+            "Cargo.toml",
+            "README.md",
+            "hello.txt",
+            "src/lib.rs"
+          ],
+          "validation_passed": null,
+          "drift_flags": [],
+          "notes": "Create initial README"
+        },
+        {
+          "turn_number": 2,
+          "user_input": "make it cleaner",
+          "route_chosen": "UNKNOWN",
+          "resolved_task": null,
+          "files_before": [
+            "Cargo.toml",
+            "README.md",
+            "hello.txt",
+            "src/lib.rs"
+          ],
+          "files_after": [
+            "Cargo.toml",
+            "README.md",
+            "hello.txt",
+            "src/lib.rs"
+          ],
+          "validation_passed": null,
+          "drift_flags": [],
+          "notes": "Improve request, README changed=False"
+        }
+      ],
+      "final_score": "PARTIAL",
+      "summary": "Route=UNKNOWN, changed=False"
+    },
+    {
+      "scenario_name": "chat_escape_hatch",
+      "passed": true,
+      "turns": [
+        {
+          "turn_number": 1,
+          "user_input": "Create docs/intro.md with a brief introduction.",
+          "route_chosen": "UNKNOWN",
+          "resolved_task": "Create docs/intro.md with a brief introduction.",
+          "files_before": [
+            "Cargo.toml",
+            "README.md",
+            "src/lib.rs"
+          ],
+          "files_after": [
+            "Cargo.toml",
+            "README.md",
+            "hello.txt",
+            "src/lib.rs"
+          ],
+          "validation_passed": null,
+          "drift_flags": [],
+          "notes": "Create intro.md"
+        },
+        {
+          "turn_number": 2,
+          "user_input": "what is Rust ownership?",
+          "route_chosen": "UNKNOWN",
+          "resolved_task": null,
+          "files_before": [
+            "Cargo.toml",
+            "README.md",
+            "hello.txt",
+            "src/lib.rs"
+          ],
+          "files_after": [
+            "Cargo.toml",
+            "README.md",
+            "hello.txt",
+            "src/lib.rs"
+          ],
+          "validation_passed": null,
+          "drift_flags": [],
+          "notes": "Chat question"
+        }
+      ],
+      "final_score": "PASS",
+      "summary": "Route=UNKNOWN, mutations=0"
+    }
+  ],
+  "drift_summary": [
+    "Turn 2 routed as 'UNKNOWN' instead of 'FOLLOW_UP'",
+    "Turn 2 resolved task doesn't reference original contract: None",
+    "Routed as UNKNOWN not FOLLOW_UP",
+    "Routed as UNKNOWN not FOLLOW_UP"
+  ]
+}

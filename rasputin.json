@@ -1,3 +1,6 @@
 {
-  "ollama_model": "qwen2.5-coder:14b"
+  "ollama_model": "huihui_ai/deepseek-r1-abliterated:14b",
+  "execution": {
+    "sandbox_mode": "repo_boundary_only"
+  }
 }

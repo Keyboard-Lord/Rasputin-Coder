@@ -8,13 +8,43 @@ Rasputin is evolving toward **bounded autonomy**: controlled, inspectable, valid
 
 Every limitation includes: what exists now, why it exists, what impact it has, and what constraints must be preserved when addressing it.
 
+## No True Sandbox
+
+Current state:
+- No container, jail, chroot, VM, seccomp, or OS-level sandbox.
+- Worker process isolation is not a security sandbox.
+- Repository path checks prevent normal tool escape but do not contain arbitrary code once shell commands/build scripts run.
+- Command allowlisting reduces risk but does not equal containment.
+
+Impact:
+- Malicious build scripts, tests, or dependency hooks may still execute with user permissions if allowed commands run them.
+- Local filesystem damage is reduced but not categorically prevented.
+- Security claims must be phrased as bounded execution, not sandboxing.
+
+## Disposable Workspace Limitations
+
+`disposable_workspace` is implemented only in the TUI-managed path. It creates a temporary git worktree, runs the child runtime with `repo_boundary_only`, and emits a promotion report. It does not automatically promote files back to the source workspace.
+
+- Requires a git repository and the `git_worktree` backend.
+- Direct `forge_bootstrap` runs reject `disposable_workspace`.
+- Commands and build scripts still execute with the user's permissions inside the disposable worktree.
+- Retention is opt-in with `retain_on_failure` or `retain_on_success`.
+- Promotion is report-only until an explicit promotion command is implemented.
+
+Target direction:
+- Disposable workspace copies or git worktrees
+- Optional container backend
+- Network-off execution mode
+- Per-task temp directory with explicit artifact promotion
+- OS-specific sandbox providers
+
 ## Current System Boundaries
 
 ### 1. ~~Single-Step Execution Only~~ RESOLVED
 
 **Status**: Chain execution implemented as of current sprint.
 
-**Previous State**: Each Forge task was an isolated, non-resumable execution with no structured mechanism for chaining multiple bounded steps.
+**Previous State**: Each Forge task was a separate, non-resumable worker execution with no structured mechanism for chaining multiple bounded steps.
 
 **Current State**: 
 - `ChainExecutor` provides structured multi-step task chains
@@ -210,32 +240,32 @@ Every limitation includes: what exists now, why it exists, what impact it has, a
 
 ## Implementation Gaps
 
-### 9. Runtime-Internal Discovery Tools Not Planner-Visible
+### 9. Direct Shell Execution Not Planner-Visible
 
-**Current State**: `list_dir`, `grep_search`, `execute_command` exist in the tool registry but are not exposed to the planner. They are runtime-internal only.
+**Current State**: Read-only discovery tools such as `list_dir`, `grep_search`, `dependency_graph`, `symbol_index`, and `entrypoint_detector` are planner-visible. Direct `execute_command` exists in the internal tool registry but is not exposed to the planner-visible runtime tool list.
 
-**Why It Exists**: Tool visibility was restricted to the minimal viable surface for initial release. Broader exposure requires bounded execution guarantees.
+**Why It Exists**: Planner visibility is restricted to tools that can be bounded and audited. Shell command execution requires a tighter operator-controlled path.
 
 **Impact**:
-- Planner cannot self-direct exploration
+- Planner can self-direct bounded exploration
+- Planner cannot run arbitrary shell commands directly
 - All file paths must come from user or initial snapshot
-- No runtime adaptation to discovered structure
 
-**Resolution Path**: Graduated tool exposure with execution-mode gates. Read-only discovery available in `Analysis` mode only.
+**Resolution Path**: Keep direct command execution behind explicit policy and operator-controlled workflows.
 
 ---
 
-### 10. Lint Stage Not Implemented
+### 10. Lint Coverage Is Best-Effort
 
-**Current State**: Validation engine skips the lint stage. Syntax, build, and test run; clippy/eslint do not.
+**Current State**: Validation includes a lint stage where a supported project policy can detect the appropriate command. Coverage is not universal across every language, workspace layout, or custom lint setup.
 
 **Why It Exists**: Lint configuration is project-specific and complex to auto-detect. Syntax/build/test were prioritized.
 
 **Impact**:
-- Style issues pass validation
-- Manual linting required post-task
+- Unsupported or custom lint setups may still need manual validation
+- Style issues can pass if no supported lint command is detected
 
-**Resolution Path**: Project-type detection with standard lint command defaults.
+**Resolution Path**: Expand project-type detection and document explicit lint command configuration.
 
 ---
 
@@ -427,10 +457,10 @@ ReadBeforeWriteGate::evaluate()
 | Interrupt handling | **RESOLVED V1.5** — /stop with context preservation |
 | Risk forecasting | **RESOLVED V1.5** — GitConflict detection and blocking |
 | Auto-resume | **RESOLVED V1.5** — Policy-gated autonomous continuation |
-| Discovery limitations | **BOUNDARY** — Bounded expansion planned (list_dir, grep_search implemented) |
+| Discovery limitations | **BOUNDARY** — Bounded discovery tools implemented; broader context ranking remains planned |
 | Approval/clarification pauses | **PARTIAL V1.5** — Checkpoint structure exists, not wired to hot path |
 | Context assembly | **BOUNDARY** — Ranked assembly planned |
-| Lint stage | **GAP** — Implementation pending |
+| Lint stage | **PARTIAL** — Implemented where supported policy can detect a lint command |
 | Session replay | **GAP** — Best-effort only |
 | Interface cleanup | **DEBT** — Promote or remove |
 

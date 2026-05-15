@@ -11,7 +11,7 @@
 //! - StubPlanner: Deterministic rule-based planner
 //! - ModelPlanner: Real model-backed planner with output normalization
 //! - PlannerAdapter: Output parsing and validation layer
-//! - PlannerBackend: Isolated model communication interface
+//! - PlannerBackend: Separated model communication interface
 //!
 //! Safety boundaries:
 //! - Planner receives StateView, not raw runtime internals

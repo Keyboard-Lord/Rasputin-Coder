@@ -10,6 +10,7 @@ The roadmap prioritizes:
 3. **Structured continuity**: State persistence that maintains validation boundaries
 4. **Supervised execution**: Optional human checkpoints that fail closed
 5. **Hard invariant preservation**: Local-first, validation-gated, bounded execution remain fixed
+6. **Truthful sandboxing**: Keep current claims limited to repository boundary enforcement until a real backend exists
 
 This document defines the phased path from current single-step execution to controlled agent behavior.
 
@@ -20,7 +21,7 @@ Regardless of autonomy expansion, the following constraints are **permanent**:
 ### Local-First Operation
 - Ollama API on localhost only as core dependency
 - No required external API calls (OpenAI, Anthropic, etc.)
-- Optional remote Ollama may be supported, but never required
+- Remote Ollama is not supported in the current implementation; non-loopback endpoints are rejected
 - No telemetry or analytics transmission
 
 ### Validation-Gated Persistence
@@ -48,6 +49,62 @@ Regardless of autonomy expansion, the following constraints are **permanent**:
 - Execution tied to explicit user input: task-like plain text, `/goal`, `/task`, or equivalent command
 
 These invariants define the boundary of acceptable implementation. Autonomy expansion happens **within** these constraints, not by removing them.
+
+### Disposable Workspace Contract
+
+Current default `execution.sandbox_mode: repo_boundary_only` names the existing behavior: repository path checks, bounded worker execution, command policy, and validation-gated persistence. It is not a true sandbox.
+
+`execution.sandbox_mode: disposable_workspace` is a workspace isolation improvement, not an OS/container sandbox. The current implementation is TUI-managed and git-only:
+
+1. Source workspace remains untouched during execution.
+2. A disposable git worktree is created per task or chain step.
+3. The Forge worker `working_dir` points at the disposable worktree.
+4. File tools remain boundary-checked against the disposable worktree root.
+5. Validation runs inside the disposable worktree.
+6. On success, Rasputin emits a promotion report containing changed files, a unified diff, source workspace target paths, validation outcome context, source HEAD before/after, and promotion status.
+7. No source workspace mutation occurs without explicit promotion; automatic promotion is not implemented.
+8. On failure, the disposable worktree is removed unless `retain_on_failure` is enabled.
+9. On success, the disposable worktree is removed unless `retain_on_success` is enabled.
+10. Creation, execution, validation, promotion report, retention, and cleanup events are audit-visible through runtime events.
+
+Failure behavior:
+- Git worktree creation failure: fail closed.
+- Non-git workspace: fail closed because recursive-copy backend is not implemented yet.
+- Validation failure: no promotion package is treated as promotable; source workspace remains unchanged.
+- Source workspace changed since task start: promotion report is marked blocked.
+- Source HEAD lookup failure: fail closed.
+- Diff generation failure: fail closed.
+- Promotion report generation failure: fail closed even if child execution succeeded.
+- Child worker spawn failure or cancellation: fail closed and clean up unless retention is configured.
+- Cleanup failure: fail closed and report the cleanup error.
+- Patch application conflict during future promotion: must block promotion.
+- Ignored or untracked generated files: reported in the changed-files list; untracked files are included in the review diff where Git can represent them.
+
+Promotion report contract:
+- `execution_environment`: disposable worktree backend and source/worktree paths.
+- `changes_made`: changed file list from the disposable worktree.
+- `validation_results`: validation outcome summary for the disposable execution.
+- `source_head_before`: source repository HEAD captured before disposable execution.
+- `source_head_after`: source repository HEAD at report generation time.
+- `promotion_status`: `pending_review` when source HEAD is unchanged, `blocked` when source HEAD changed, or a failure state when report generation fails.
+
+Runtime event contract:
+- `disposable_workspace_created`
+- `disposable_workspace_execution_started`
+- `disposable_workspace_validation_passed`
+- `disposable_workspace_validation_failed`
+- `disposable_workspace_promotion_report_created`
+- `disposable_workspace_promotion_pending`
+- `disposable_workspace_cleaned`
+- `disposable_workspace_retained`
+- `disposable_workspace_cleanup_failed`
+
+Remaining future sandbox modes must be implemented before they are described as active:
+- `external_container`: execute worker tasks inside an operator-provided container backend
+- Network-off execution: block non-loopback network access during worker commands
+- OS-specific providers: use platform mechanisms such as seccomp/App Sandbox where available
+
+Until those modes exist, docs and UI must avoid claiming chroot, jail, container, VM, syscall, OS permission, or network namespace isolation.
 
 ## Roadmap: Controlled Autonomy Under Hard Constraints
 
@@ -503,6 +560,7 @@ What remains excluded:
 | Issue | Location | Priority | Notes |
 |-------|----------|----------|-------|
 | Interface layer | `crates/rasputin-interface/` | Medium | Promote to hot path or remove |
+| Legacy Deep Forge CLI | `crates/rasputin-forge/` | Medium | Keep as compatibility mode or retire after launcher/docs migration |
 | Error consolidation | `types.rs` across crates | Low | Unify error types |
 | Validation extensibility | `validation_engine.rs` | Medium | Plugin architecture for custom validators |
 | TUI state | `apps/rasputin-tui/src/state.rs` | Low | Normalize state management |

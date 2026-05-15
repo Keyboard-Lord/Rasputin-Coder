@@ -35,11 +35,11 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect) {
         f,
         app,
         ButtonSpec::new(
-            "nav:new_chat",
+            "nav:new_task",
             UiAction::NewChat,
             row,
             "+",
-            "New chat",
+            "New task",
             false,
         ),
         inner.x,
@@ -173,7 +173,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect) {
     draw_heading(
         f,
         Rect::new(inner.x, row, inner.width, 1),
-        "Chats",
+        "Runs",
         content_bottom,
     );
     row += 1;
@@ -690,7 +690,7 @@ impl ButtonSpec {
             row,
             icon,
             label,
-            emphasized: id == "nav:new_chat",
+            emphasized: id == "nav:new_task",
             active,
         }
     }

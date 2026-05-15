@@ -1464,13 +1464,8 @@ fn append_system_notice(lines: &mut Vec<Line>, message: &Message, width: u16, ma
     let max_width = width.saturating_sub(4) as usize;
 
     // Truncate if needed
-    let display_content = if content.len() > max_width && max_width > 3 {
-        let mut truncated = content
-            .chars()
-            .take(max_width.saturating_sub(3))
-            .collect::<String>();
-        truncated.push_str("...");
-        truncated
+    let display_content = if content.chars().count() > max_width && max_width > 3 {
+        crate::text::truncate_chars(content, max_width)
     } else {
         content.to_string()
     };
@@ -1607,50 +1602,7 @@ fn append_run_card(lines: &mut Vec<Line>, run_card: &RunCard, _width: u16, max_l
 
 /// Hard wrap a line of text to fit within max_width
 fn wrap_line(line: &str, max_width: usize) -> Vec<String> {
-    if line.len() <= max_width {
-        return vec![line.to_string()];
-    }
-
-    let mut result = Vec::new();
-    let mut current_line = String::new();
-
-    for word in line.split_whitespace() {
-        if current_line.is_empty() {
-            if word.len() > max_width {
-                // Word is longer than max_width, split it
-                let mut start = 0;
-                while start < word.len() {
-                    let end = (start + max_width).min(word.len());
-                    result.push(word[start..end].to_string());
-                    start = end;
-                }
-            } else {
-                current_line = word.to_string();
-            }
-        } else if current_line.len() + 1 + word.len() <= max_width {
-            current_line.push(' ');
-            current_line.push_str(word);
-        } else {
-            result.push(current_line);
-            if word.len() > max_width {
-                let mut start = 0;
-                while start < word.len() {
-                    let end = (start + max_width).min(word.len());
-                    result.push(word[start..end].to_string());
-                    start = end;
-                }
-                current_line = String::new();
-            } else {
-                current_line = word.to_string();
-            }
-        }
-    }
-
-    if !current_line.is_empty() {
-        result.push(current_line);
-    }
-
-    result
+    crate::text::wrap_line_chars(line, max_width)
 }
 
 fn plugin_line(label: &str, value: &str, color: ratatui::style::Color) -> Line<'static> {
@@ -1697,17 +1649,7 @@ fn shorten_home(path: &str) -> String {
 }
 
 fn truncate_inline(text: &str, max_len: usize) -> String {
-    let trimmed = text.trim();
-    if trimmed.chars().count() <= max_len {
-        trimmed.to_string()
-    } else {
-        let mut out = trimmed
-            .chars()
-            .take(max_len.saturating_sub(3))
-            .collect::<String>();
-        out.push_str("...");
-        out
-    }
+    crate::text::truncate_chars(text.trim(), max_len)
 }
 
 /// Estimate how many terminal lines a message will occupy
@@ -1728,8 +1670,31 @@ fn estimate_message_lines(message: &Message, width: u16) -> usize {
     let wrapped_lines: usize = message
         .content
         .lines()
-        .map(|line| (line.len() / width) + 1)
+        .map(|line| (line.chars().count() / width) + 1)
         .sum();
 
     header_lines + wrapped_lines.max(content_lines) + spacing
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wraps_curly_quotes_em_dash_and_long_numbered_markdown_without_panic() {
+        let line = "1. “Unicode-heavy” structured output — with a verylongtoken“inside”";
+        let wrapped = wrap_line(line, 12);
+
+        assert!(wrapped.len() > 1);
+        assert!(wrapped.iter().all(|line| line.is_char_boundary(line.len())));
+    }
+
+    #[test]
+    fn truncates_inline_unicode_without_byte_boundary_panic() {
+        let text = "Next goal — inspect “docs” and validate";
+        let truncated = truncate_inline(text, 18);
+
+        assert!(truncated.ends_with("..."));
+        assert!(truncated.is_char_boundary(truncated.len()));
+    }
 }
