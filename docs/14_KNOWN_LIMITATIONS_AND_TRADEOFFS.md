@@ -240,32 +240,32 @@ Target direction:
 
 ## Implementation Gaps
 
-### 9. Runtime-Internal Discovery Tools Not Planner-Visible
+### 9. Direct Shell Execution Not Planner-Visible
 
-**Current State**: `list_dir`, `grep_search`, `execute_command` exist in the tool registry but are not exposed to the planner. They are runtime-internal only.
+**Current State**: Read-only discovery tools such as `list_dir`, `grep_search`, `dependency_graph`, `symbol_index`, and `entrypoint_detector` are planner-visible. Direct `execute_command` exists in the internal tool registry but is not exposed to the planner-visible runtime tool list.
 
-**Why It Exists**: Tool visibility was restricted to the minimal viable surface for initial release. Broader exposure requires bounded execution guarantees.
+**Why It Exists**: Planner visibility is restricted to tools that can be bounded and audited. Shell command execution requires a tighter operator-controlled path.
 
 **Impact**:
-- Planner cannot self-direct exploration
+- Planner can self-direct bounded exploration
+- Planner cannot run arbitrary shell commands directly
 - All file paths must come from user or initial snapshot
-- No runtime adaptation to discovered structure
 
-**Resolution Path**: Graduated tool exposure with execution-mode gates. Read-only discovery available in `Analysis` mode only.
+**Resolution Path**: Keep direct command execution behind explicit policy and operator-controlled workflows.
 
 ---
 
-### 10. Lint Stage Not Implemented
+### 10. Lint Coverage Is Best-Effort
 
-**Current State**: Validation engine skips the lint stage. Syntax, build, and test run; clippy/eslint do not.
+**Current State**: Validation includes a lint stage where a supported project policy can detect the appropriate command. Coverage is not universal across every language, workspace layout, or custom lint setup.
 
 **Why It Exists**: Lint configuration is project-specific and complex to auto-detect. Syntax/build/test were prioritized.
 
 **Impact**:
-- Style issues pass validation
-- Manual linting required post-task
+- Unsupported or custom lint setups may still need manual validation
+- Style issues can pass if no supported lint command is detected
 
-**Resolution Path**: Project-type detection with standard lint command defaults.
+**Resolution Path**: Expand project-type detection and document explicit lint command configuration.
 
 ---
 
@@ -457,10 +457,10 @@ ReadBeforeWriteGate::evaluate()
 | Interrupt handling | **RESOLVED V1.5** — /stop with context preservation |
 | Risk forecasting | **RESOLVED V1.5** — GitConflict detection and blocking |
 | Auto-resume | **RESOLVED V1.5** — Policy-gated autonomous continuation |
-| Discovery limitations | **BOUNDARY** — Bounded expansion planned (list_dir, grep_search implemented) |
+| Discovery limitations | **BOUNDARY** — Bounded discovery tools implemented; broader context ranking remains planned |
 | Approval/clarification pauses | **PARTIAL V1.5** — Checkpoint structure exists, not wired to hot path |
 | Context assembly | **BOUNDARY** — Ranked assembly planned |
-| Lint stage | **GAP** — Implementation pending |
+| Lint stage | **PARTIAL** — Implemented where supported policy can detect a lint command |
 | Session replay | **GAP** — Best-effort only |
 | Interface cleanup | **DEBT** — Promote or remove |
 

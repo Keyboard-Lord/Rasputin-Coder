@@ -53,7 +53,8 @@ Rasputin-1/
 │   │   │   ├── types.rs           # Core domain types
 │   │   │   └── validator.rs       # Output validation
 │   │   └── Cargo.toml
-│   └── rasputin-interface/        # Shared types (partial integration)
+│   ├── rasputin-interface/        # Shared/transparency types (partial integration)
+│   └── rasputin-forge/            # Legacy Deep Forge CLI mode
 │       ├── src/
 │       └── Cargo.toml
 ├── docs/                          # Documentation
@@ -112,6 +113,9 @@ Partial orchestration layer. Contains useful code but is **not** the canonical h
 - Shared serialization types
 - Intent specifications
 - Approval-oriented structures (not wired into live path)
+
+### `crates/rasputin-forge/`
+Legacy Deep Forge CLI mode. It can still be launched explicitly through the launcher’s forge mode, but it is not the active TUI/Forge worker hot path. Treat it as a compatibility surface unless the task explicitly targets legacy Deep Forge behavior.
 
 ### `docs/`
 Authoritative documentation lives directly in the 15 numbered markdown files listed above. There is no `docs/canonical/` subtree in the current repository.

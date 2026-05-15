@@ -406,6 +406,37 @@ pub struct Runtime {
     chain_executor: Option<crate::chain_executor::ChainExecutor>,
 }
 
+fn validate_loopback_planner_endpoint(endpoint: &str) -> Result<(), ForgeError> {
+    let endpoint = endpoint.trim();
+    if is_loopback_http_endpoint(endpoint) {
+        return Ok(());
+    }
+
+    Err(ForgeError::InvalidConfiguration(
+        "planner endpoint must be loopback-only; remote Ollama endpoints are not supported"
+            .to_string(),
+    ))
+}
+
+fn is_loopback_http_endpoint(endpoint: &str) -> bool {
+    let Some(rest) = endpoint.strip_prefix("http://") else {
+        return false;
+    };
+    let authority = rest.split('/').next().unwrap_or(rest);
+    if authority.contains('@') {
+        return false;
+    }
+
+    if let Some(rest) = authority.strip_prefix("[::1]") {
+        return rest.starts_with(':') && rest.len() > 1;
+    }
+
+    let Some((host, port)) = authority.rsplit_once(':') else {
+        return false;
+    };
+    !port.is_empty() && matches!(host, "127.0.0.1" | "localhost")
+}
+
 impl Runtime {
     /// Create a new runtime instance
     pub fn new(config: RuntimeConfig) -> Result<Self, ForgeError> {
@@ -416,6 +447,7 @@ impl Runtime {
                 config.sandbox_mode.as_config_value()
             )));
         }
+        validate_loopback_planner_endpoint(&config.planner_endpoint)?;
 
         // CODEX-LIKE CONTINUITY: Try to load previous state and resolve follow-up
         let previous_state = AgentState::load_for_continuity();
@@ -4289,6 +4321,37 @@ mod tests {
             error.contains("sandbox_mode 'disposable_workspace' is declared but not implemented")
         );
         assert!(error.contains("current runtime supports only 'none' and 'repo_boundary_only'"));
+    }
+
+    #[test]
+    fn direct_runtime_rejects_remote_planner_endpoint() {
+        let config = RuntimeConfig {
+            planner_endpoint: "http://192.0.2.10:11434".to_string(),
+            ..RuntimeConfig::default()
+        };
+
+        let error = match Runtime::new(config) {
+            Ok(_) => panic!("remote planner endpoint should be rejected"),
+            Err(error) => error.to_string(),
+        };
+
+        assert!(error.contains("planner endpoint must be loopback-only"));
+        assert!(error.contains("remote Ollama endpoints are not supported"));
+    }
+
+    #[test]
+    fn direct_runtime_rejects_userinfo_endpoint_that_starts_with_loopback() {
+        let config = RuntimeConfig {
+            planner_endpoint: "http://127.0.0.1:11434@example.com".to_string(),
+            ..RuntimeConfig::default()
+        };
+
+        let error = match Runtime::new(config) {
+            Ok(_) => panic!("userinfo planner endpoint should be rejected"),
+            Err(error) => error.to_string(),
+        };
+
+        assert!(error.contains("planner endpoint must be loopback-only"));
     }
 
     struct CurrentDirGuard {

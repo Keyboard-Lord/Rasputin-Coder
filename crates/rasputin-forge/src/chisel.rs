@@ -113,7 +113,10 @@ impl Chisel {
     pub async fn apply_patch(&self, patch: &Patch) -> Result<PatchResult, ForgeError> {
         let full_path = self.base_path.join(&patch.file_path);
 
-        info!("[CHISEL] Applying patch to {:?}", patch.file_path);
+        info!(
+            "[CHISEL] Applying patch to {:?}: {}",
+            patch.file_path, patch.description
+        );
         debug!(
             "[CHISEL] Searching for: {}",
             &patch.search[..patch.search.len().min(50)]

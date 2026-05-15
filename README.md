@@ -12,7 +12,7 @@ Rasputin is a local terminal-first coding agent that runs in your terminal, conn
 
 **What You Get**:
 - Terminal chat interface for local LLMs ✓
-- Task-like natural-language input that becomes a bounded autonomous goal ✓
+- Natural-language Normal Mode: tell Rasputin what you want, and task-like input becomes a bounded plan ✓
 - Local coder-model goal planning with deterministic fallback ✓
 - Bounded, validated code execution through Forge ✓
 - **Multi-step chain execution** with validation gating ✓
@@ -22,6 +22,11 @@ Rasputin is a local terminal-first coding agent that runs in your terminal, conn
 - **Fail-closed validation** across format → lint → build → test stages ✓
 - **Audit-grounded execution timeline** in inspector with full traceability ✓
 - Stage-oriented runtime surfaces in the inspector ✓
+
+**Normal Mode Usage**:
+Type the outcome directly: `build me a SaaS for gym clients`, `clean up this repo`, `fix the warnings`, `run the tests and fix what breaks`, `show me the plan`, or `continue where you left off`. Rasputin classifies the request, stages a plan when work is broad, uses chain context for follow-ups, prefers disposable worktrees for broad edits, validates before reporting success, and stops for confirmation when risk requires it.
+
+Slash commands remain available for Operator Mode and precision control. Natural language does not bypass validation gates, chain policy, approval checks, disposable-workspace behavior, or destructive-command protections.
 
 **What You Don't Get**:
 - Unbounded background autonomy
@@ -70,7 +75,8 @@ Rasputin-1/
 │   └── rasputin-tui/          # User-facing terminal UI (the product)
 ├── crates/
 │   ├── forge-runtime/         # Bounded execution engine (worker process)
-│   └── rasputin-interface/    # Partial orchestration layer (NOT the hot path)
+│   ├── rasputin-interface/    # Partial orchestration layer (NOT the hot path)
+│   └── rasputin-forge/        # Legacy Deep Forge CLI mode (not the TUI hot path)
 ├── docs/                      # 15 canonical docs (01-15)
 │   ├── 01_PROJECT_OVERVIEW.md
 │   ├── 02_ARCHITECTURE.md
@@ -143,6 +149,8 @@ This is **intentional**: autonomy is bounded by step limits, validation gates, a
 **Correct mental model**: A **bounded, validated, local autonomous SWE loop**—not an unbounded background agent.
 
 **Chain execution exists**: Multi-step chains with validation gating, checkpoints at validated boundaries, and guarded resume with explicit approval.
+
+**Legacy surface**: `crates/rasputin-forge` is the older Deep Forge CLI mode reachable through explicit launcher forge mode. It is maintained as a compatibility/operator surface, not the active TUI-to-`forge_bootstrap` worker path.
 
 **Sandbox status**: Rasputin does not currently provide chroot, jail, container, VM, syscall, OS permission, or network namespace isolation. File tools are bounded by repository path checks and command policy; worker processes are a reliability boundary, not a security sandbox.
 

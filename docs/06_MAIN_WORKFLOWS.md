@@ -33,6 +33,35 @@ sequenceDiagram
 
 **Prerequisites**: Repo attached, Ollama connected, model available
 
+## Normal Mode Natural-Language Workflow
+
+```mermaid
+flowchart TD
+    A[User types natural language] --> B[Classify intent]
+    B -->|Question| C[Plain chat]
+    B -->|Show plan/status/stop| D[Existing command handler]
+    B -->|Continue/follow-up| E{Active chain context?}
+    E -->|Yes| F[Resolve working memory]
+    E -->|No| G[Explain no active work]
+    B -->|Broad work| H[Stage goal plan]
+    H --> I[Preview risk and wait for confirmation]
+    I --> J[Run bounded chain]
+    J --> K[Disposable worktree when configured/preferred]
+    K --> L[Validate]
+    L --> M[Report result or halt on failure]
+```
+
+Examples:
+- `build me a SaaS for gym clients` -> generate-app intent -> staged goal plan
+- `clean up this repo` -> repo-cleanup intent -> bounded cleanup plan
+- `fix the warnings` -> failure-repair intent -> warning audit and repair plan
+- `run the tests and fix what breaks` -> validation-repair intent
+- `show me the plan` -> `/plan` equivalent
+- `continue where you left off` -> active chain or working-memory continuation
+- `stop` -> `/stop` equivalent
+
+Natural language does not bypass risk preview, confirmation, chain policy, validation gates, or destructive-command protections.
+
 ## Autonomous Goal And Forge Task Workflow
 
 ### High-Level Flow
@@ -44,8 +73,8 @@ sequenceDiagram
     participant Worker as Forge Worker
     participant Ollama
 
-    User->>TUI: task-like plain text or /goal
-    TUI->>TUI: Classify task-like input
+    User->>TUI: natural-language work request or /goal
+    TUI->>TUI: Classify intent and task-like input
     TUI->>Ollama: Local coder-model goal-plan request
     Ollama-->>TUI: Plan JSON
     TUI->>TUI: Materialize chain and queue confirmation/resume
@@ -252,7 +281,7 @@ flowchart TD
     Y --> G[Commit to AgentState]
 ```
 
-**Note**: Lint stage is skipped in current runtime policy.
+**Note**: Lint validation is best-effort. Supported lint commands run before build/test when detected; unsupported or custom lint setups may require manual validation.
 
 ### Git Grounding Check (V1.5)
 

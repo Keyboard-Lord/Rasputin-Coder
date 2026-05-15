@@ -68,9 +68,7 @@ impl OllamaClient {
 
     pub fn new(endpoint: String) -> Self {
         assert!(
-            endpoint.starts_with("http://127.0.0.1:")
-                || endpoint.starts_with("http://[::1]:")
-                || endpoint.starts_with("http://localhost:"),
+            is_loopback_http_endpoint(&endpoint),
             "Ollama endpoint must be loopback-only"
         );
         let client = Client::builder()
@@ -240,6 +238,25 @@ impl OllamaClient {
             Err(anyhow::anyhow!("No message in response"))
         }
     }
+}
+
+fn is_loopback_http_endpoint(endpoint: &str) -> bool {
+    let Some(rest) = endpoint.trim().strip_prefix("http://") else {
+        return false;
+    };
+    let authority = rest.split('/').next().unwrap_or(rest);
+    if authority.contains('@') {
+        return false;
+    }
+
+    if let Some(rest) = authority.strip_prefix("[::1]") {
+        return rest.starts_with(':') && rest.len() > 1;
+    }
+
+    let Some((host, port)) = authority.rsplit_once(':') else {
+        return false;
+    };
+    !port.is_empty() && matches!(host, "127.0.0.1" | "localhost")
 }
 
 #[derive(Debug, Clone)]
@@ -536,5 +553,11 @@ mod tests {
     #[should_panic(expected = "loopback-only")]
     fn ollama_client_rejects_remote_endpoint() {
         let _ = OllamaClient::new("http://192.168.1.10:11434".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "loopback-only")]
+    fn ollama_client_rejects_userinfo_endpoint_that_starts_with_loopback() {
+        let _ = OllamaClient::new("http://127.0.0.1:11434@example.com".to_string());
     }
 }

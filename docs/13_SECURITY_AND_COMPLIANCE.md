@@ -6,7 +6,7 @@
 
 | Threat | Mitigation |
 |--------|------------|
-| Arbitrary code execution | Minimal tool surface, no shell in planner tools |
+| Arbitrary code execution | Bounded planner-visible tool surface; direct shell execution is not planner-visible |
 | File system escape | Repository boundary validation, path traversal checks for file tools |
 | Prompt injection | Strict output contract, validation before execution |
 | Resource exhaustion | Bounded iterations, timeouts, process limits |
@@ -14,6 +14,17 @@
 | State corruption | Integrity hashing, hash chain verification |
 
 ## Security Controls
+
+### 0. Natural-Language Routing Is Not a Safety Bypass
+
+Normal Mode accepts phrases such as "clean up this repo", "fix the warnings", "show me the plan", and "continue where you left off". These phrases are routed to existing command, goal, chain, validation, and stop workflows. The natural-language layer does not execute privileged work on its own.
+
+Safety invariants still apply:
+- Broad repository changes require a staged plan and may require confirmation.
+- Dangerous or destructive wording blocks or requires explicit operator action.
+- Follow-ups require active chain or working-memory context.
+- Disposable workspace behavior remains report-only until explicit promotion exists.
+- Validation failure halts or repairs within chain policy; it does not invent success.
 
 ### 1. Bounded Execution
 
@@ -73,14 +84,19 @@ Disposable workspace behavior is intentionally narrow:
 
 ### 5. Minimal Tool Surface
 
-Planner sees only 5 tools:
+Planner-visible tools are explicitly registered by runtime policy:
 - `read_file` — Information gathering
 - `write_file` — File creation
 - `apply_patch` — Surgical modification
 - `list_dir` — Directory exploration
 - `grep_search` — Pattern search
+- `dependency_graph` — Bounded dependency inspection
+- `symbol_index` — Bounded symbol inspection
+- `entrypoint_detector` — Entrypoint discovery
+- `lint_runner` — Policy-bounded lint validation
+- `test_runner` — Policy-bounded test validation
 
-No `execute_command` for planner (TUI-only).
+Direct `execute_command` and `browser_preview` remain in the internal registry but are not exposed to the planner-visible runtime tool list.
 
 ### 6. Bounded Worker Execution
 
@@ -95,20 +111,15 @@ No `execute_command` for planner (TUI-only).
 **Ollama HTTP Client Constraint**:
 ```rust
 // ollama.rs - enforced at client construction
-assert!(
-    endpoint.starts_with("http://127.0.0.1:")
-        || endpoint.starts_with("http://[::1]:")
-        || endpoint.starts_with("http://localhost:"),
-    "Ollama endpoint must be loopback-only"
-);
+is_loopback_http_endpoint(endpoint)
 ```
 
 - **Loopback-only HTTP**: Remote Ollama endpoints are **rejected at runtime**
 - **No cloud AI services**: OpenAI, Anthropic, or other cloud APIs are **architecturally inaccessible**
-- **No network egress**: Except loopback Ollama calls
+- **LLM client egress is loopback-only**: Rasputin's Ollama client rejects non-loopback endpoints
 - **No telemetry/analytics**: Zero data collection or external communication
 
-**Security Invariant**: Even with malicious configuration, the system cannot call remote endpoints or cloud APIs.
+**Security Invariant**: Even with malicious model configuration, Rasputin's own LLM client cannot call remote endpoints or cloud APIs. This is not a general network sandbox: build scripts, tests, and subprocesses still run with the user's normal OS permissions unless a future OS/container backend is added.
 
 ## Compliance
 

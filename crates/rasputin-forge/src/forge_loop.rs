@@ -110,6 +110,7 @@ impl ExhaustionLoop {
                 println!("Iterations: {}", self.stats.iterations);
                 println!("Flaws fixed: {}", self.stats.flaws_fixed);
                 println!("Patches applied: {}", self.stats.patches_applied);
+                println!("Patches failed: {}", self.stats.patches_failed);
                 std::process::exit(0);
             }
             LoopStatus::Stalled => {
@@ -160,6 +161,8 @@ impl ExhaustionLoop {
         // Phase B: The Draft - process flaws
         println!("\n[PHASE B: THE DRAFT]");
 
+        let max_retries = flaw_queue.max_retries;
+
         while let Some(flaw) = flaw_queue.pop_next() {
             println!(
                 "\n[FLAW] {:?}:{} - {:?}",
@@ -167,7 +170,7 @@ impl ExhaustionLoop {
             );
             println!("       {}", flaw.description);
 
-            match self.process_flaw(&flaw).await {
+            match self.process_flaw(&flaw, max_retries).await {
                 Ok(true) => {
                     self.stats.flaws_fixed += 1;
                     println!("       ✓ Fixed");
@@ -192,7 +195,7 @@ impl ExhaustionLoop {
 
     /// Process a single flaw
     /// Returns Ok(true) if fixed, Ok(false) if should retry
-    async fn process_flaw(&mut self, flaw: &Flaw) -> Result<bool, ForgeError> {
+    async fn process_flaw(&mut self, flaw: &Flaw, max_retries: u8) -> Result<bool, ForgeError> {
         // Read current file content
         let file_path = self.config.target_repo.join(&flaw.file_path);
         let content = tokio::fs::read_to_string(&file_path)
@@ -227,23 +230,42 @@ impl ExhaustionLoop {
         println!("       [PHASE C: SURVIVAL TEST]");
 
         let mut retry_count = 0;
-        let max_retries = 3;
 
         loop {
             // Apply patches
             let results = self.chisel.apply_patches(&patches).await;
 
-            let all_applied = results.iter().all(|r| match r {
-                Ok(PatchResult::Success { .. }) => true,
-                _ => false,
-            });
+            let mut all_applied = true;
+            for result in &results {
+                match result {
+                    Ok(PatchResult::Success {
+                        file_path,
+                        applied_at,
+                    }) => {
+                        info!(
+                            "[FORGE] Patch applied to {:?} at byte offset {}",
+                            file_path, applied_at
+                        );
+                    }
+                    Ok(PatchResult::Failed { reason }) => {
+                        warn!("[FORGE] Patch failed: {}", reason);
+                        self.stats.patches_failed += 1;
+                        all_applied = false;
+                    }
+                    Err(e) => {
+                        warn!("[FORGE] Patch application error: {:?}", e);
+                        self.stats.patches_failed += 1;
+                        all_applied = false;
+                    }
+                }
+            }
 
             if !all_applied {
                 // Restore and retry
                 self.chisel.restore_file(&flaw.file_path).await?;
 
                 retry_count += 1;
-                if retry_count >= max_retries {
+                if retry_count >= max_retries as usize {
                     println!("       ✗ Patch failed after {} retries", max_retries);
                     self.chisel.restore_file(&flaw.file_path).await?;
                     return Ok(false);
@@ -285,7 +307,7 @@ impl ExhaustionLoop {
                     self.chisel.restore_file(&flaw.file_path).await?;
 
                     retry_count += 1;
-                    if retry_count >= max_retries {
+                    if retry_count >= max_retries as usize {
                         println!("       ✗ Tests failed after {} retries", max_retries);
                         return Ok(false);
                     }

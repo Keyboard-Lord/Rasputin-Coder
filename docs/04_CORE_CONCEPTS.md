@@ -16,6 +16,14 @@ Rasputin implements a hierarchy of five authoritative truth layers. Each layer d
 
 ## Domain Model
 
+### Natural-Language Control Layer
+
+Normal Mode treats natural language as the primary control surface. Inputs are classified into intent classes such as chat question, read-only analysis, build feature, generate app, repo cleanup, fix failure, run validation, continue work, show plan, show status, stop work, summarize work, audit docs, and production readiness.
+
+The intent layer only chooses the route. Execution still flows through the same plan, preview, chain, disposable-worktree, validation, and reporting machinery used by slash commands. Broad edits require a staged plan and confirmation. Dangerous or destructive wording blocks or asks for explicit operator action. Follow-ups such as "continue where you left off" require active chain or working-memory context; without it, Rasputin reports that there is no active work to continue.
+
+Slash commands remain canonical Operator Mode controls for precision and audit work.
+
 ### Session Types
 
 | Concept | Type | Description |

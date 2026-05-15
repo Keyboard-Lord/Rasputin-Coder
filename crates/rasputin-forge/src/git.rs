@@ -39,6 +39,9 @@ impl GitOps {
     }
 
     /// Stage all changes
+    // Legacy Deep Forge keeps the broader git wrapper surface for operator mode.
+    // The current loop stages one flaw file at a time.
+    #[allow(dead_code)]
     pub async fn stage_all(&self) -> Result<(), ForgeError> {
         let output = Command::new("git")
             .args(["add", "."])
@@ -84,6 +87,9 @@ impl GitOps {
     }
 
     /// Restore file to HEAD state
+    // Kept for manual legacy recovery flows. The active loop restores from
+    // Chisel backups instead of resetting files through git.
+    #[allow(dead_code)]
     pub async fn restore_file(&self, file_path: &Path) -> Result<(), ForgeError> {
         let output = Command::new("git")
             .args(["checkout", "HEAD", "--", &file_path.to_string_lossy()])
@@ -108,6 +114,9 @@ impl GitOps {
     }
 
     /// Check if working directory is clean
+    // Kept for legacy preflight/reporting flows; not part of the current
+    // single-file Deep Forge loop.
+    #[allow(dead_code)]
     pub async fn is_clean(&self) -> Result<bool, ForgeError> {
         let output = Command::new("git")
             .args(["status", "--porcelain"])
@@ -123,6 +132,9 @@ impl GitOps {
     }
 
     /// Get list of modified files
+    // Kept for legacy preflight/reporting flows; not part of the current
+    // single-file Deep Forge loop.
+    #[allow(dead_code)]
     pub async fn modified_files(&self) -> Result<Vec<PathBuf>, ForgeError> {
         let output = Command::new("git")
             .args(["status", "--porcelain"])

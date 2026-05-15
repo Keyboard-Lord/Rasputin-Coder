@@ -1,6 +1,26 @@
 # Rasputin API Reference
 
+## Natural-Language Normal Mode
+
+Normal Mode is the primary user interface: type the outcome directly. The router maps natural-language intents onto the same internal command, goal, chain, validation, and stop workflows used by slash commands.
+
+| Example input | Intent | Internal route |
+|---------------|--------|----------------|
+| `build me a SaaS for gym clients` | Generate app | Staged goal plan, broad-work confirmation |
+| `clean up this repo` | Repo cleanup | Bounded goal plan, disposable workspace preferred |
+| `fix the warnings` | Fix failure | Warning audit and repair plan |
+| `audit the docs` | Audit docs | Documentation audit goal |
+| `run tests and fix what breaks` | Run validation + repair | Validation-first repair plan |
+| `continue where you left off` | Continue work | Active chain or working-memory follow-up |
+| `show me the plan` | Show plan | `/plan` equivalent |
+| `summarize what happened` | Summarize work | Active chain/status summary |
+| `stop` | Stop work | `/stop` equivalent |
+
+Natural language is not a bypass. Broad or risky work can still require confirmation, dangerous actions can still block, and validation/chain/disposable-workspace policy remains enforced.
+
 ## Slash Commands (User Interface)
+
+Slash commands are still available for Operator Mode, precise control, and automation.
 
 | Command | Arguments | Purpose |
 |---------|-----------|---------|

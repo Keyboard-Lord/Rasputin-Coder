@@ -98,8 +98,23 @@ pub enum ComposerMode {
 enum InputRouting {
     /// Slash command - parse and execute
     Command,
+    /// Natural-language control that maps to an existing operator command
+    NaturalCommand {
+        intent: NaturalLanguageIntent,
+        command: Command,
+    },
+    /// Natural-language control that must stop before mutation
+    NaturalBlocked {
+        intent: NaturalLanguageIntent,
+        reason: &'static str,
+    },
+    /// Natural-language continuation requested, but there is no active work
+    ContinueWithoutContext { original_input: String },
     /// Structured execution intent (task-like plain text) - route to goal pipeline
-    TaskGoal,
+    TaskGoal {
+        intent: NaturalLanguageIntent,
+        statement: String,
+    },
     /// Task mode execution - granular plan
     TaskExecution,
     /// Conversational chat - direct LLM
@@ -113,6 +128,285 @@ enum InputRouting {
     SimpleCommand {
         contract: crate::artifact_contract::ArtifactContract,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NaturalLanguageIntent {
+    ChatQuestion,
+    ReadOnlyAnalysis,
+    BuildFeature,
+    GenerateApp,
+    RepoCleanup,
+    FixFailure,
+    RunValidation,
+    ContinueWork,
+    ShowPlan,
+    ShowStatus,
+    StopWork,
+    SummarizeWork,
+    AuditDocs,
+    ProductionReadiness,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NaturalRiskLevel {
+    None,
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct NaturalIntentPolicy {
+    risk_level: NaturalRiskLevel,
+    confirmation_required: bool,
+    disposable_workspace_preferred: bool,
+    chain_context_required: bool,
+}
+
+impl NaturalLanguageIntent {
+    fn policy(self) -> NaturalIntentPolicy {
+        match self {
+            Self::ChatQuestion => NaturalIntentPolicy {
+                risk_level: NaturalRiskLevel::None,
+                confirmation_required: false,
+                disposable_workspace_preferred: false,
+                chain_context_required: false,
+            },
+            Self::ReadOnlyAnalysis | Self::ShowPlan | Self::ShowStatus | Self::SummarizeWork => {
+                NaturalIntentPolicy {
+                    risk_level: NaturalRiskLevel::Low,
+                    confirmation_required: false,
+                    disposable_workspace_preferred: false,
+                    chain_context_required: false,
+                }
+            }
+            Self::ContinueWork => NaturalIntentPolicy {
+                risk_level: NaturalRiskLevel::Medium,
+                confirmation_required: false,
+                disposable_workspace_preferred: false,
+                chain_context_required: true,
+            },
+            Self::StopWork => NaturalIntentPolicy {
+                risk_level: NaturalRiskLevel::Low,
+                confirmation_required: false,
+                disposable_workspace_preferred: false,
+                chain_context_required: false,
+            },
+            Self::FixFailure | Self::RunValidation | Self::AuditDocs => NaturalIntentPolicy {
+                risk_level: NaturalRiskLevel::Medium,
+                confirmation_required: true,
+                disposable_workspace_preferred: true,
+                chain_context_required: false,
+            },
+            Self::BuildFeature
+            | Self::GenerateApp
+            | Self::RepoCleanup
+            | Self::ProductionReadiness => NaturalIntentPolicy {
+                risk_level: NaturalRiskLevel::High,
+                confirmation_required: true,
+                disposable_workspace_preferred: true,
+                chain_context_required: false,
+            },
+            Self::Unknown => NaturalIntentPolicy {
+                risk_level: NaturalRiskLevel::Medium,
+                confirmation_required: true,
+                disposable_workspace_preferred: true,
+                chain_context_required: false,
+            },
+        }
+    }
+
+    fn classify(input: &str) -> Self {
+        let normalized = normalize_natural_input(input);
+        let words: Vec<&str> = normalized.split_whitespace().collect();
+        let has = |needle: &str| words.contains(&needle);
+        let contains_any =
+            |needles: &[&str]| needles.iter().any(|needle| normalized.contains(needle));
+
+        if is_chat_question(&normalized) {
+            return Self::ChatQuestion;
+        }
+        if contains_any(&[
+            "show me the plan",
+            "show the plan",
+            "what is the plan",
+            "current plan",
+            "the plan",
+        ]) {
+            return Self::ShowPlan;
+        }
+        if contains_any(&[
+            "what happened",
+            "summarize what happened",
+            "summarize the work",
+            "summarize progress",
+            "give me a summary",
+        ]) {
+            return Self::SummarizeWork;
+        }
+        if contains_any(&[
+            "show status",
+            "status update",
+            "where are we",
+            "what is the status",
+        ]) {
+            return Self::ShowStatus;
+        }
+        if matches!(
+            normalized.as_str(),
+            "stop" | "halt" | "pause" | "stop work" | "stop working"
+        ) {
+            return Self::StopWork;
+        }
+        if contains_any(&[
+            "continue where you left off",
+            "continue from where you left off",
+            "pick up where you left off",
+            "keep going",
+            "do the rest",
+            "finish the rest",
+            "finish remaining",
+        ]) || matches!(normalized.as_str(), "continue" | "resume" | "proceed")
+        {
+            return Self::ContinueWork;
+        }
+        if contains_any(&["delete this repo", "delete the repo", "remove this repo"]) {
+            return Self::Unknown;
+        }
+        if contains_any(&[
+            "run the tests and fix",
+            "run tests and fix",
+            "run the test suite and fix",
+            "test and fix",
+        ]) {
+            return Self::RunValidation;
+        }
+        if contains_any(&[
+            "fix the warnings",
+            "fix warnings",
+            "fix compiler warnings",
+            "fix clippy warnings",
+            "undo that if it failed",
+            "repair the failure",
+            "fix what broke",
+            "fix what breaks",
+        ]) {
+            return Self::FixFailure;
+        }
+        if contains_any(&[
+            "clean up this repo",
+            "clean up the repo",
+            "cleanup this repo",
+            "cleanup the repo",
+            "repo cleanup",
+            "repository cleanup",
+        ]) {
+            return Self::RepoCleanup;
+        }
+        if contains_any(&[
+            "audit the docs",
+            "audit docs",
+            "review the docs",
+            "documentation audit",
+        ]) {
+            return Self::AuditDocs;
+        }
+        if contains_any(&[
+            "make it production ready",
+            "production ready",
+            "harden this repo",
+        ]) {
+            return Self::ProductionReadiness;
+        }
+        if (has("build") || has("create") || has("make")) && contains_any(&["app", "saas", "site"])
+        {
+            return Self::GenerateApp;
+        }
+        if has("build") || has("implement") || has("add") || has("create") || has("make") {
+            return Self::BuildFeature;
+        }
+        if contains_any(&["audit", "inspect", "analyze", "review"]) {
+            return Self::ReadOnlyAnalysis;
+        }
+
+        Self::Unknown
+    }
+
+    fn routed_statement(self, original: &str) -> String {
+        match self {
+            Self::GenerateApp => format!(
+                "Create a staged implementation plan for this app request, prefer disposable workspace execution for broad edits, validate each phase, and do not mutate source until the plan is confirmed: {}",
+                original
+            ),
+            Self::RepoCleanup => format!(
+                "Audit and clean up this repository in bounded phases. Classify dirty files, remove only proven generated artifacts, reduce safe warnings, preserve safety gates, and validate after changes: {}",
+                original
+            ),
+            Self::FixFailure => format!(
+                "Inspect current validation or compiler warnings, make only bounded fixes, preserve behavior, and rerun validation: {}",
+                original
+            ),
+            Self::RunValidation => format!(
+                "Run the relevant validation and test suite, then create a bounded repair plan for any failures before changing files: {}",
+                original
+            ),
+            Self::AuditDocs => format!(
+                "Audit the repository documentation for stale, misleading, or contradictory claims. Patch only clear documentation mismatches and validate the result: {}",
+                original
+            ),
+            Self::ProductionReadiness => format!(
+                "Assess production readiness, create a staged plan, require confirmation for broad edits, preserve validation and safety gates, and validate each phase: {}",
+                original
+            ),
+            Self::ReadOnlyAnalysis => format!(
+                "Perform a read-only analysis first and report findings before proposing any code changes: {}",
+                original
+            ),
+            Self::BuildFeature | Self::Unknown => original.to_string(),
+            _ => original.to_string(),
+        }
+    }
+}
+
+fn normalize_natural_input(input: &str) -> String {
+    input
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn is_chat_question(normalized: &str) -> bool {
+    (normalized.starts_with("what is ")
+        || normalized.starts_with("what are ")
+        || normalized.starts_with("how does ")
+        || normalized.starts_with("how do ")
+        || normalized.starts_with("why ")
+        || normalized.starts_with("explain "))
+        && !normalized.contains("this repo")
+        && !normalized.contains("the repo")
+        && !normalized.contains("my repo")
+        && !normalized.contains("the plan")
+        && !normalized.contains("status")
+}
+
+fn normal_chain_status_label(status: crate::persistence::ChainLifecycleStatus) -> &'static str {
+    match status {
+        crate::persistence::ChainLifecycleStatus::Draft => "drafting",
+        crate::persistence::ChainLifecycleStatus::Ready => "ready to start",
+        crate::persistence::ChainLifecycleStatus::Running => "in progress",
+        crate::persistence::ChainLifecycleStatus::WaitingForApproval => "waiting for approval",
+        crate::persistence::ChainLifecycleStatus::Halted => "paused",
+        crate::persistence::ChainLifecycleStatus::Failed => "needs attention",
+        crate::persistence::ChainLifecycleStatus::Complete => "complete",
+        crate::persistence::ChainLifecycleStatus::Archived => "archived",
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2540,6 +2834,60 @@ impl App {
                         "✗ Blocked"
                     };
 
+                    if matches!(self.experience_mode, ExperienceMode::Normal) {
+                        let status_label = match chain.status {
+                            crate::persistence::ChainLifecycleStatus::Running => "in progress",
+                            crate::persistence::ChainLifecycleStatus::Complete => "complete",
+                            crate::persistence::ChainLifecycleStatus::Failed => "failed",
+                            crate::persistence::ChainLifecycleStatus::Halted => "paused",
+                            crate::persistence::ChainLifecycleStatus::WaitingForApproval => {
+                                "waiting for approval"
+                            }
+                            crate::persistence::ChainLifecycleStatus::Draft => "draft",
+                            crate::persistence::ChainLifecycleStatus::Ready => "ready",
+                            _ => "not active",
+                        };
+                        let mut msg = format!(
+                            "I found the active task.\nTask: {}\nStatus: {}\nProgress: {}\nContext: {}\nExecution: {}",
+                            chain.objective, status_label, progress, context_info, execution_status
+                        );
+
+                        if let Some(desc) = readiness.next_step_description.as_deref() {
+                            msg.push_str(&format!("\nNext: {}", desc));
+                        }
+
+                        if let Some(ref reason) = readiness.reason {
+                            msg.push_str(&format!(
+                                "\n\n{} {}",
+                                reason.description(),
+                                reason.suggested_action()
+                            ));
+                        } else {
+                            match chain.status {
+                                crate::persistence::ChainLifecycleStatus::Halted => {
+                                    msg.push_str(
+                                        "\n\nSay \"continue\" when you want me to resume.",
+                                    );
+                                }
+                                crate::persistence::ChainLifecycleStatus::Failed => {
+                                    msg.push_str(
+                                        "\n\nSay \"fix that\" to start from the failure context.",
+                                    );
+                                }
+                                crate::persistence::ChainLifecycleStatus::Complete => {
+                                    msg.push_str("\n\nThe task is complete.");
+                                }
+                                _ => {
+                                    msg.push_str("\n\nSay \"show me the plan\" to see the steps.");
+                                }
+                            }
+                        }
+
+                        self.push_system_notice(&msg);
+                        self.persist().await;
+                        return Ok(false);
+                    }
+
                     // Get Git state (from chain if captured, otherwise current)
                     let git_info = if let Some(ref grounding) = chain.git_grounding {
                         grounding.summary()
@@ -3343,13 +3691,22 @@ impl App {
             Command::ShowPlan => {
                 if let Some(chain) = self.persistence.get_active_chain() {
                     if chain.steps.is_empty() {
-                        self.push_system_notice(&format!(
-                            "Chain '{}' has no steps planned. Use /task to add steps.",
-                            chain.name
-                        ));
+                        if self.is_operator_mode() {
+                            self.push_system_notice(&format!(
+                                "Chain '{}' has no steps planned. Use /task to add steps.",
+                                chain.name
+                            ));
+                        } else {
+                            self.push_system_notice(
+                                "There is active work, but no steps have been planned yet.",
+                            );
+                        }
                     } else {
-                        let mut msg =
-                            format!("Plan for '{}' ({} steps):\n", chain.name, chain.steps.len());
+                        let mut msg = if self.is_operator_mode() {
+                            format!("Plan for '{}' ({} steps):\n", chain.name, chain.steps.len())
+                        } else {
+                            format!("Here is the current plan ({} steps):\n", chain.steps.len())
+                        };
                         for (i, step) in chain.steps.iter().enumerate() {
                             let icon = match step.status {
                                 crate::persistence::ChainStepStatus::Completed => "✓",
@@ -3360,13 +3717,26 @@ impl App {
                             };
                             msg.push_str(&format!("  {} {}. {}\n", icon, i + 1, step.description));
                         }
-                        msg.push_str(&format!("\nStatus: {:?}", chain.status));
+                        if self.is_operator_mode() {
+                            msg.push_str(&format!("\nStatus: {:?}", chain.status));
+                        } else {
+                            msg.push_str(&format!(
+                                "\nStatus: {}",
+                                normal_chain_status_label(chain.status)
+                            ));
+                        }
                         self.push_system_notice(&msg);
                     }
                 } else {
-                    self.push_system_notice(
-                        "No active chain. Use /chains to select or create one.",
-                    );
+                    if self.is_operator_mode() {
+                        self.push_system_notice(
+                            "No active chain. Use /chains to select or create one.",
+                        );
+                    } else {
+                        self.push_system_notice(
+                            "There is no active plan yet. Tell me what you want to do and I will draft one.",
+                        );
+                    }
                 }
             }
 
@@ -5641,6 +6011,41 @@ impl App {
                 let command = crate::commands::parse_command(&content);
                 self.execute_command_with_message(command, &content).await
             }
+            InputRouting::NaturalCommand { intent, command } => {
+                let policy = intent.policy();
+                self.emit_event(
+                    "intent",
+                    &format!(
+                        "{:?} risk={:?} confirm={} disposable={} context={}",
+                        intent,
+                        policy.risk_level,
+                        policy.confirmation_required,
+                        policy.disposable_workspace_preferred,
+                        policy.chain_context_required
+                    ),
+                );
+                self.append_user_message(&content);
+                if policy.confirmation_required {
+                    self.push_system_notice(
+                        "I’ll show the plan first. Broad or risky work still waits for confirmation.",
+                    );
+                }
+                self.execute_command_unified(command, &content).await
+            }
+            InputRouting::NaturalBlocked { intent, reason } => {
+                self.emit_event("intent", &format!("{:?}: blocked", intent));
+                self.append_user_message(&content);
+                self.push_system_notice(reason);
+                Ok(false)
+            }
+            InputRouting::ContinueWithoutContext { original_input } => {
+                self.emit_event("intent", "ContinueWork: no active context");
+                self.append_user_message(&original_input);
+                self.push_system_notice(
+                    "I don’t have active work to continue. Start a new goal, or choose a recent chain from the chain list.",
+                );
+                Ok(false)
+            }
             InputRouting::SimpleCommand { contract } => {
                 // Simple natural language command - auto-execute artifact contract
                 self.emit_event(
@@ -5672,19 +6077,36 @@ impl App {
                     }
                 }
             }
-            InputRouting::TaskGoal => {
+            InputRouting::TaskGoal { intent, statement } => {
                 // Structured execution intent: route to goal pipeline
-                self.emit_event("autonomy", "plain text goal detected");
+                let policy = intent.policy();
+                self.emit_event(
+                    "intent",
+                    &format!(
+                        "{:?} risk={:?} confirm={} disposable={} context={}",
+                        intent,
+                        policy.risk_level,
+                        policy.confirmation_required,
+                        policy.disposable_workspace_preferred,
+                        policy.chain_context_required
+                    ),
+                );
 
                 // Add user message to UI (after classification, before execution)
                 self.append_user_message(&content);
 
+                if policy.disposable_workspace_preferred {
+                    self.push_system_notice(
+                        "I’ll split this into a plan first. For broad edits, the safe path is a disposable worktree plus validation before any source changes.",
+                    );
+                }
+
                 let should_quit = self
                     .execute_command_unified(
                         Command::Goal {
-                            statement: content.clone(),
+                            statement: statement.clone(),
                         },
-                        &content,
+                        &statement,
                     )
                     .await?;
 
@@ -5698,7 +6120,7 @@ impl App {
                 }) {
                     self.pending_command = Some(Command::GoalConfirm);
                     self.push_system_notice(
-                        "Autonomous goal intake: plan generated and confirmation queued.",
+                        "Plan ready. Review it, then confirm before execution.",
                     );
                 }
 
@@ -5869,6 +6291,42 @@ impl App {
             return InputRouting::Command;
         }
 
+        let natural_intent = NaturalLanguageIntent::classify(content);
+        match natural_intent {
+            NaturalLanguageIntent::ShowPlan => {
+                return InputRouting::NaturalCommand {
+                    intent: natural_intent,
+                    command: Command::ShowPlan,
+                };
+            }
+            NaturalLanguageIntent::ShowStatus | NaturalLanguageIntent::SummarizeWork => {
+                return InputRouting::NaturalCommand {
+                    intent: natural_intent,
+                    command: Command::ChainStatus { chain_id: None },
+                };
+            }
+            NaturalLanguageIntent::StopWork => {
+                return InputRouting::NaturalCommand {
+                    intent: natural_intent,
+                    command: Command::Stop,
+                };
+            }
+            NaturalLanguageIntent::Unknown
+                if {
+                    let normalized = normalize_natural_input(content);
+                    normalized.contains("delete this repo")
+                        || normalized.contains("delete the repo")
+                        || normalized.contains("remove this repo")
+                } =>
+            {
+                return InputRouting::NaturalBlocked {
+                    intent: natural_intent,
+                    reason: "I won’t delete a repository from a casual phrase. Use Operator Mode and an explicit command if you really intend a destructive action.",
+                };
+            }
+            _ => {}
+        }
+
         // SIMPLE COMMANDS: "docs", "create README.md", etc.
         // Auto-detect and convert to artifact contract
         if let Ok(repo_path) = self.active_project_root() {
@@ -5899,11 +6357,55 @@ impl App {
                     };
                 }
             }
+            return InputRouting::ContinueWithoutContext {
+                original_input: content.to_string(),
+            };
+        }
+        if matches!(natural_intent, NaturalLanguageIntent::ContinueWork) {
+            if let Some(memory) = crate::working_memory::compute_working_memory(&self.persistence) {
+                if let Some(resolved_task) = memory
+                    .resolve_follow_up(crate::working_memory::FollowUpIntent::Continue, content)
+                {
+                    return InputRouting::FollowUp {
+                        resolved_task,
+                        original_input: content.to_string(),
+                    };
+                }
+            }
+            return InputRouting::ContinueWithoutContext {
+                original_input: content.to_string(),
+            };
+        }
+
+        match natural_intent {
+            NaturalLanguageIntent::BuildFeature
+            | NaturalLanguageIntent::GenerateApp
+            | NaturalLanguageIntent::RepoCleanup
+            | NaturalLanguageIntent::FixFailure
+            | NaturalLanguageIntent::RunValidation
+            | NaturalLanguageIntent::AuditDocs
+            | NaturalLanguageIntent::ProductionReadiness
+            | NaturalLanguageIntent::ReadOnlyAnalysis => {
+                return InputRouting::TaskGoal {
+                    intent: natural_intent,
+                    statement: natural_intent.routed_statement(content),
+                };
+            }
+            NaturalLanguageIntent::ChatQuestion => return InputRouting::Chat,
+            NaturalLanguageIntent::ContinueWork
+            | NaturalLanguageIntent::ShowPlan
+            | NaturalLanguageIntent::ShowStatus
+            | NaturalLanguageIntent::StopWork
+            | NaturalLanguageIntent::SummarizeWork
+            | NaturalLanguageIntent::Unknown => {}
         }
 
         // Check for structured execution intent (task-like plain text)
         if crate::autonomy::AutonomousLoopController::is_task_like_plain_text(content) {
-            return InputRouting::TaskGoal;
+            return InputRouting::TaskGoal {
+                intent: NaturalLanguageIntent::BuildFeature,
+                statement: content.to_string(),
+            };
         }
 
         // In Task execution mode, treat as task execution
@@ -11189,6 +11691,285 @@ mod tests {
             error_message: None,
             replay_record: None,
         }
+    }
+
+    fn latest_user_visible_payload(app: &App) -> String {
+        app.state
+            .structured_outputs
+            .last()
+            .map(|output| output.content.clone())
+            .or_else(|| {
+                app.state
+                    .messages
+                    .last()
+                    .map(|message| message.content.clone())
+            })
+            .unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn natural_language_build_saas_routes_to_generate_app_goal() {
+        let app = App::new().await;
+        let route = app.classify_input_intent("build me a SaaS for gym clients");
+
+        match route {
+            InputRouting::TaskGoal { intent, statement } => {
+                assert_eq!(intent, NaturalLanguageIntent::GenerateApp);
+                assert!(statement.contains("disposable workspace"));
+            }
+            other => panic!("expected GenerateApp task goal, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn natural_language_fix_warnings_routes_to_repair_goal() {
+        let app = App::new().await;
+        let route = app.classify_input_intent("fix the warnings");
+
+        match route {
+            InputRouting::TaskGoal { intent, statement } => {
+                assert_eq!(intent, NaturalLanguageIntent::FixFailure);
+                assert!(statement.contains("compiler warnings"));
+            }
+            other => panic!("expected FixFailure task goal, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn natural_language_show_plan_routes_to_plan_command() {
+        let app = App::new().await;
+        let route = app.classify_input_intent("show me the plan");
+
+        match route {
+            InputRouting::NaturalCommand { intent, command } => {
+                assert_eq!(intent, NaturalLanguageIntent::ShowPlan);
+                assert_eq!(command, Command::ShowPlan);
+            }
+            other => panic!("expected ShowPlan command, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn natural_language_continue_resolves_active_chain_context() {
+        let mut app = App::new().await;
+        let chain = app
+            .persistence
+            .create_chain("active work", "Build the billing dashboard")
+            .clone();
+        let chain_id = chain.id.clone();
+        {
+            let chain = app.persistence.get_chain_mut(&chain_id).expect("chain");
+            chain.status = crate::persistence::ChainLifecycleStatus::Running;
+            chain.steps.push(self_healing_test_step(
+                "step-1",
+                "Create dashboard shell",
+                crate::persistence::ChainStepStatus::Pending,
+            ));
+        }
+
+        let route = app.classify_input_intent("continue where you left off");
+
+        match route {
+            InputRouting::FollowUp { resolved_task, .. } => {
+                assert!(resolved_task.contains("Build the billing dashboard"));
+            }
+            other => panic!("expected follow-up route, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn natural_language_continue_without_active_chain_fails_gracefully() {
+        let mut app = App::new().await;
+        app.persistence.chains.clear();
+        app.persistence.active_chain_id = None;
+
+        let route = app.classify_input_intent("continue");
+
+        match route {
+            InputRouting::ContinueWithoutContext { original_input } => {
+                assert_eq!(original_input, "continue");
+            }
+            other => panic!("expected no-context continuation, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn natural_language_run_tests_and_fix_routes_to_validation_repair_goal() {
+        let app = App::new().await;
+        let route = app.classify_input_intent("run tests and fix what breaks");
+
+        match route {
+            InputRouting::TaskGoal { intent, statement } => {
+                assert_eq!(intent, NaturalLanguageIntent::RunValidation);
+                assert!(statement.contains("validation and test suite"));
+            }
+            other => panic!("expected RunValidation task goal, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn natural_language_audit_docs_routes_to_doc_audit_goal() {
+        let app = App::new().await;
+        let route = app.classify_input_intent("audit the docs");
+
+        match route {
+            InputRouting::TaskGoal { intent, statement } => {
+                assert_eq!(intent, NaturalLanguageIntent::AuditDocs);
+                assert!(statement.contains("documentation"));
+            }
+            other => panic!("expected AuditDocs task goal, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn natural_language_production_ready_routes_to_readiness_goal() {
+        let app = App::new().await;
+        let route = app.classify_input_intent("make it production ready");
+
+        match route {
+            InputRouting::TaskGoal { intent, statement } => {
+                assert_eq!(intent, NaturalLanguageIntent::ProductionReadiness);
+                assert!(statement.contains("production readiness"));
+            }
+            other => panic!("expected ProductionReadiness task goal, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn natural_language_summarize_routes_to_status_command() {
+        let app = App::new().await;
+        let route = app.classify_input_intent("summarize what happened");
+
+        match route {
+            InputRouting::NaturalCommand { intent, command } => {
+                assert_eq!(intent, NaturalLanguageIntent::SummarizeWork);
+                assert_eq!(command, Command::ChainStatus { chain_id: None });
+            }
+            other => panic!("expected SummarizeWork command, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn natural_language_stop_routes_to_stop_command() {
+        let app = App::new().await;
+        let route = app.classify_input_intent("stop");
+
+        match route {
+            InputRouting::NaturalCommand { intent, command } => {
+                assert_eq!(intent, NaturalLanguageIntent::StopWork);
+                assert_eq!(command, Command::Stop);
+            }
+            other => panic!("expected StopWork command, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn natural_language_general_rust_question_stays_chat() {
+        let app = App::new().await;
+        let route = app.classify_input_intent("what is Rust ownership?");
+
+        assert_eq!(route, InputRouting::Chat);
+    }
+
+    #[tokio::test]
+    async fn natural_language_delete_repo_is_blocked() {
+        let app = App::new().await;
+        let route = app.classify_input_intent("delete this repo");
+
+        match route {
+            InputRouting::NaturalBlocked { intent, reason } => {
+                assert_eq!(intent, NaturalLanguageIntent::Unknown);
+                assert!(reason.contains("destructive"));
+            }
+            other => panic!("expected destructive request block, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn normal_mode_plan_response_hides_internal_ids() {
+        let mut app = App::new().await;
+        let chain = app
+            .persistence
+            .create_chain("chain-operator-visible", "Clean up repo")
+            .clone();
+        let chain_id = chain.id.clone();
+        {
+            let chain = app.persistence.get_chain_mut(&chain_id).expect("chain");
+            chain.status = crate::persistence::ChainLifecycleStatus::Running;
+            chain.steps.push(self_healing_test_step(
+                "step-1",
+                "Audit warnings",
+                crate::persistence::ChainStepStatus::Running,
+            ));
+        }
+
+        app.handle_command(Command::ShowPlan)
+            .await
+            .expect("show plan");
+
+        let rendered = latest_user_visible_payload(&app);
+        assert!(rendered.contains("Here is the current plan"));
+        assert!(!rendered.contains("chain-operator-visible"));
+        assert!(!rendered.contains("Running"));
+        assert!(rendered.contains("in progress"));
+    }
+
+    #[tokio::test]
+    async fn operator_mode_plan_response_keeps_technical_details() {
+        let mut app = App::new().await;
+        app.experience_mode = ExperienceMode::Operator;
+        let chain = app
+            .persistence
+            .create_chain("chain-operator-visible", "Clean up repo")
+            .clone();
+        let chain_id = chain.id.clone();
+        {
+            let chain = app.persistence.get_chain_mut(&chain_id).expect("chain");
+            chain.status = crate::persistence::ChainLifecycleStatus::Running;
+            chain.steps.push(self_healing_test_step(
+                "step-1",
+                "Audit warnings",
+                crate::persistence::ChainStepStatus::Running,
+            ));
+        }
+
+        app.handle_command(Command::ShowPlan)
+            .await
+            .expect("show plan");
+
+        let rendered = latest_user_visible_payload(&app);
+        assert!(rendered.contains("chain-operator-visible"));
+        assert!(rendered.contains("Status: Running"));
+    }
+
+    #[tokio::test]
+    async fn normal_mode_status_response_hides_chain_id() {
+        let mut app = App::new().await;
+        let chain = app
+            .persistence
+            .create_chain("chain-operator-visible", "Clean up repo")
+            .clone();
+        let chain_id = chain.id.clone();
+        {
+            let chain = app.persistence.get_chain_mut(&chain_id).expect("chain");
+            chain.status = crate::persistence::ChainLifecycleStatus::Running;
+            chain.steps.push(self_healing_test_step(
+                "step-1",
+                "Audit warnings",
+                crate::persistence::ChainStepStatus::Pending,
+            ));
+        }
+
+        app.handle_command(Command::ChainStatus { chain_id: None })
+            .await
+            .expect("chain status");
+
+        let rendered = latest_user_visible_payload(&app);
+        assert!(rendered.contains("I found the active task"));
+        assert!(rendered.contains("Status: in progress"));
+        assert!(!rendered.contains("ID:"));
+        assert!(!rendered.contains("chain-operator-visible"));
+        assert!(!rendered.contains("Audit:"));
     }
 
     fn multi_artifact_doc_prompt() -> String {

@@ -11,6 +11,8 @@ pub enum ForgeError {
     Io(#[from] std::io::Error),
 
     #[error("Git error: {0}")]
+    // Retained for the legacy Deep Forge CLI error surface.
+    #[allow(dead_code)]
     Git(String),
 
     #[error("Linter error: {0}")]
@@ -20,18 +22,26 @@ pub enum ForgeError {
     Ollama(String),
 
     #[error("Patch application failed: {0}")]
+    // Retained for legacy callers that distinguish patch failure classes.
+    #[allow(dead_code)]
     PatchFailed(String),
 
     #[error("Test failure: {0}")]
+    // Retained for legacy callers that distinguish validation failure classes.
+    #[allow(dead_code)]
     TestFailed(String),
 
     #[error("Exhaustion loop stalled after {0} iterations")]
+    // Retained for legacy callers that distinguish loop-stall exits.
+    #[allow(dead_code)]
     LoopStalled(usize),
 
     #[error("AST parsing error: {0}")]
     AstParse(String),
 
     #[error("Invalid SEARCH/REPLACE block: {0}")]
+    // Retained for legacy callers that distinguish malformed patch output.
+    #[allow(dead_code)]
     InvalidDiff(String),
 }
 
@@ -282,10 +292,16 @@ pub enum EntityKind {
     Impl,
     Module,
     Macro,
+    // Roadmap placeholder for explicit test-entity classification in the
+    // legacy AST critic. Current detection treats tests as functions.
+    #[allow(dead_code)]
     Test,
 }
 
 /// Linter warning/output
+// Structured linter records are kept for the legacy critic API, though the
+// current parser converts linter output directly into Flaw values.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct LinterOutput {
     pub tool: String,
@@ -297,6 +313,8 @@ pub struct LinterOutput {
     pub code: Option<String>,
 }
 
+// Severity belongs to LinterOutput's compatibility shape.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
     Error,

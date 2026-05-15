@@ -53,6 +53,10 @@
 | `uuid` | 1.x | UUID generation |
 | `tokio` | 1.0 | Async (sync features only) |
 
+### Legacy Deep Forge (`crates/rasputin-forge/Cargo.toml`)
+
+`rasputin-forge` is the older Deep Forge CLI mode. It remains in the workspace because the launcher can still enter it explicitly, but it is not the active TUI task execution path. New runtime work should target `apps/rasputin-tui/src/forge_runtime.rs` and `crates/forge-runtime` unless a change explicitly targets legacy Deep Forge behavior.
+
 ## External Dependencies
 
 | Tool | Purpose | Required |
@@ -81,6 +85,7 @@ members = [
     "apps/rasputin-tui",
     "crates/forge-runtime",
     "crates/rasputin-interface",
+    "crates/rasputin-forge",
 ]
 resolver = "2"
 
@@ -141,4 +146,5 @@ GitHub Actions workflow (`.github/workflows/ci.yml`):
 ### Why Separate Crates?
 - `rasputin-tui`: Product layer with heavy UI dependencies
 - `forge-runtime`: Worker with minimal dependencies for fast spawn
-- `rasputin-interface`: Shared types (partially integrated)
+- `rasputin-interface`: Shared/transparency types (partially integrated)
+- `rasputin-forge`: Legacy Deep Forge CLI mode, not the active TUI worker

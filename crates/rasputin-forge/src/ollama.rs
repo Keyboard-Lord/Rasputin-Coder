@@ -29,8 +29,6 @@ struct GenerateRequest {
 struct GenerateResponse {
     response: String,
     done: bool,
-    #[serde(default)]
-    context: Option<Vec<u64>>,
 }
 
 impl OllamaClient {
@@ -244,6 +242,10 @@ SEARCH/REPLACE BLOCK:"#,
     }
 
     /// Generate comprehensive flaw analysis
+    // Retained for the legacy Deep Forge audit mode. The current loop performs
+    // local critic analysis first, but this API is useful for manual operator
+    // experiments without changing the hot TUI/forge-runtime path.
+    #[allow(dead_code)]
     pub async fn analyze_repository(&self, repo_summary: &str) -> Result<String, ForgeError> {
         let prompt = format!(
             r#"Analyze the following Rust repository for code quality issues:

@@ -21,7 +21,7 @@ Regardless of autonomy expansion, the following constraints are **permanent**:
 ### Local-First Operation
 - Ollama API on localhost only as core dependency
 - No required external API calls (OpenAI, Anthropic, etc.)
-- Optional remote Ollama may be supported, but never required
+- Remote Ollama is not supported in the current implementation; non-loopback endpoints are rejected
 - No telemetry or analytics transmission
 
 ### Validation-Gated Persistence
@@ -560,6 +560,7 @@ What remains excluded:
 | Issue | Location | Priority | Notes |
 |-------|----------|----------|-------|
 | Interface layer | `crates/rasputin-interface/` | Medium | Promote to hot path or remove |
+| Legacy Deep Forge CLI | `crates/rasputin-forge/` | Medium | Keep as compatibility mode or retire after launcher/docs migration |
 | Error consolidation | `types.rs` across crates | Low | Unify error types |
 | Validation extensibility | `validation_engine.rs` | Medium | Plugin architecture for custom validators |
 | TUI state | `apps/rasputin-tui/src/state.rs` | Low | Normalize state management |

@@ -50,10 +50,10 @@ Rasputin operates in two experience modes:
 
 | Mode | Audience | Inspector | Status Bar | Composer |
 |------|----------|-----------|------------|----------|
-| **Normal** | Daily users | Manual toggle only | Human-readable: "Working...", "Step 2 of 5" | Conversational hints |
+| **Normal** | Daily users | Manual toggle only | Human-readable: "Working...", "Step 2 of 5" | Natural-language control |
 | **Operator** | Debug/audit | Auto-shows on execution | Technical: Chain IDs, Git SHAs | Full mode toggle [CHAT][EDIT][TASK] |
 
-**Design Philosophy**: Normal mode hides debug machinery. Operator mode exposes all audit surfaces. Toggle via sidebar "View" section.
+**Design Philosophy**: Normal mode is "tell it what you want." The router classifies phrases like "clean up this repo", "fix the warnings", "show me the plan", and "continue where you left off" into the same internal workflows used by slash commands. Operator mode keeps slash commands and audit surfaces for precision. Natural language hides machinery; it does not remove validation, chain policy, risk preview, approval checks, or disposable-workspace protections.
 
 ### Security Posture
 
@@ -77,7 +77,7 @@ Rasputin operates in two experience modes:
 Rasputin is designed for developers who:
 - Prioritize privacy and local control
 - Accept bounded, deterministic autonomy over unbounded background agents
-- Prefer technical precision over conversational polish
+- Prefer a natural-language default with technical precision available in Operator Mode
 - Are willing to provide explicit file paths and context
 - Value validation-gated code quality over speed
 
