@@ -46,9 +46,9 @@ mod syntax;
 mod text;
 mod ui;
 mod validation;
-mod working_memory;
 #[cfg(test)]
 mod validation_tests;
+mod working_memory;
 
 use app::App;
 use bootstrap::LaunchIntent;

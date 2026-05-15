@@ -2355,7 +2355,9 @@ fn extract_objective_from_sections(statement: &str) -> Option<String> {
                 }
                 // Stop if we hit another section header
                 let lower_next = trimmed.to_lowercase();
-                if task_section_headers.iter().any(|h| lower_next.starts_with(h))
+                if task_section_headers
+                    .iter()
+                    .any(|h| lower_next.starts_with(h))
                     || completion_section_headers
                         .iter()
                         .any(|h| lower_next.starts_with(h))
@@ -2398,7 +2400,10 @@ fn extract_objective_from_sections(statement: &str) -> Option<String> {
             "add ",
         ];
 
-        if action_prefixes.iter().any(|prefix| lower.starts_with(prefix)) {
+        if action_prefixes
+            .iter()
+            .any(|prefix| lower.starts_with(prefix))
+        {
             // Check this isn't just a file list item
             if !trimmed.starts_with(|c: char| c.is_ascii_digit() && trimmed.contains('.')) {
                 return Some(trimmed.to_string());
@@ -2458,10 +2463,7 @@ pub fn summarize_goal_objective(statement: &str) -> String {
     }
 
     if let Some(intent) = LiteralCreationIntent::detect(statement) {
-        return format!(
-            "Create {} at {}",
-            intent.artifact_class, intent.target_path
-        );
+        return format!("Create {} at {}", intent.artifact_class, intent.target_path);
     }
 
     // Use section-aware extraction to find the objective
@@ -2483,7 +2485,10 @@ pub fn summarize_goal_objective(statement: &str) -> String {
         })
         .unwrap_or(statement);
 
-    let collapsed = first_valid_line.split_whitespace().collect::<Vec<_>>().join(" ");
+    let collapsed = first_valid_line
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     if collapsed.is_empty() {
         "Execute requested task".to_string()
     } else {
@@ -2550,7 +2555,11 @@ struct ArtifactCrudPlanState {
 
 impl ArtifactCrudPlanState {
     fn operation_for_path(&self, path: &str) -> ArtifactCrudOperation {
-        if self.empty_filenames.iter().any(|candidate| candidate == path) {
+        if self
+            .empty_filenames
+            .iter()
+            .any(|candidate| candidate == path)
+        {
             ArtifactCrudOperation::ReplaceEmpty
         } else if self
             .existing_required_filenames
@@ -3062,12 +3071,26 @@ fn detect_explicit_artifact_count(statement: &str) -> Option<usize> {
             "exactly" | "precisely" | "total" | "produce" | "creating"
         ) || matches!(
             next,
-            "artifact" | "artifacts" | "doc" | "docs" | "document" | "documents" | "file"
-                | "files" | "markdown"
+            "artifact"
+                | "artifacts"
+                | "doc"
+                | "docs"
+                | "document"
+                | "documents"
+                | "file"
+                | "files"
+                | "markdown"
         ) || matches!(
             next_two,
-            "artifact" | "artifacts" | "doc" | "docs" | "document" | "documents" | "file"
-                | "files" | "markdown"
+            "artifact"
+                | "artifacts"
+                | "doc"
+                | "docs"
+                | "document"
+                | "documents"
+                | "file"
+                | "files"
+                | "markdown"
         ) {
             return Some(count);
         }
@@ -3285,9 +3308,9 @@ fn looks_like_filename(candidate: &str) -> bool {
         return false;
     }
 
-    candidate.chars().all(|ch| {
-        ch.is_ascii_alphanumeric() || matches!(ch, '/' | '_' | '-' | '.')
-    })
+    candidate
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '_' | '-' | '.'))
 }
 
 fn detect_artifact_type(statement: &str, required_filenames: &[String]) -> Option<String> {
@@ -3305,7 +3328,10 @@ fn detect_artifact_type(statement: &str, required_filenames: &[String]) -> Optio
         .all(|path| path.ends_with(".md") || path.ends_with(".markdown"))
     {
         Some("markdown".to_string())
-    } else if required_filenames.iter().all(|path| path.ends_with(".json")) {
+    } else if required_filenames
+        .iter()
+        .all(|path| path.ends_with(".json"))
+    {
         Some("json".to_string())
     } else if required_filenames.iter().all(|path| path.ends_with(".txt")) {
         Some("text".to_string())
@@ -4916,7 +4942,10 @@ All of these must be produced.";
             plan.steps.last().map(|step| step.action_type),
             Some(StepActionType::Validate)
         );
-        assert!(plan.required_context.contains(&"docs/01_PROJECT_OVERVIEW.md".to_string()));
+        assert!(
+            plan.required_context
+                .contains(&"docs/01_PROJECT_OVERVIEW.md".to_string())
+        );
         assert!(plan.steps.iter().any(|step| {
             step.description
                 .contains("docs/15_FUTURE_ROADMAP_AND_EXTENSIBILITY.md")
@@ -4951,13 +4980,16 @@ All of these must be produced.";
         .expect("explicit artifact plan generated");
 
         assert!(plan.steps.iter().any(|step| {
-            step.description.contains("Update existing required markdown artifact docs/01_PROJECT_OVERVIEW.md")
+            step.description
+                .contains("Update existing required markdown artifact docs/01_PROJECT_OVERVIEW.md")
         }));
         assert!(plan.steps.iter().any(|step| {
-            step.description.contains("Replace empty required markdown artifact docs/02_ARCHITECTURE.md")
+            step.description
+                .contains("Replace empty required markdown artifact docs/02_ARCHITECTURE.md")
         }));
         assert!(plan.steps.iter().any(|step| {
-            step.description.contains("Create missing required markdown artifact docs/03_TECHNOLOGY_STACK.md")
+            step.description
+                .contains("Create missing required markdown artifact docs/03_TECHNOLOGY_STACK.md")
         }));
         assert!(
             plan.steps[0]
@@ -5030,9 +5062,9 @@ All of these must be produced.";
 
         assert!(plan.steps.iter().any(|step| {
             step.description.contains("docs/01_PROJECT_OVERVIEW.md")
-                && step
-                    .description
-                    .contains("Required purpose: explain the product scope, operators, and outcomes.")
+                && step.description.contains(
+                    "Required purpose: explain the product scope, operators, and outcomes.",
+                )
         }));
     }
 

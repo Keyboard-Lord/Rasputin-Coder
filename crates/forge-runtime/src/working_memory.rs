@@ -37,17 +37,17 @@ pub enum FollowUpIntent {
 /// Extract potential deliverable filenames from task text using simple pattern matching
 fn extract_deliverables_from_task(task: &str) -> Vec<String> {
     let mut deliverables = Vec::new();
-    
+
     // Look for numbered filenames like "1. docs/file.md" or "2) config/app.toml"
     for line in task.lines() {
         let trimmed = line.trim();
-        
+
         // Check for "N. path/to/file.ext" pattern
         if let Some(pos) = trimmed.find(".") {
             let prefix = &trimmed[..pos];
             if prefix.trim().parse::<u32>().is_ok() {
                 // This line starts with a number, extract the path after the dot
-                let after_number = &trimmed[pos+1..].trim();
+                let after_number = &trimmed[pos + 1..].trim();
                 // Find first whitespace-separated token that looks like a path
                 if let Some(first_token) = after_number.split_whitespace().next() {
                     if first_token.contains('/') && first_token.contains('.') {
@@ -56,11 +56,13 @@ fn extract_deliverables_from_task(task: &str) -> Vec<String> {
                 }
             }
         }
-        
+
         // Also check for config/ docs/ src/ patterns anywhere in line
         for word in trimmed.split_whitespace() {
             let word = word.trim_matches(|c: char| c == '"' || c == '\'' || c == '`' || c == ',');
-            if (word.starts_with("docs/") || word.starts_with("config/") || word.starts_with("src/"))
+            if (word.starts_with("docs/")
+                || word.starts_with("config/")
+                || word.starts_with("src/"))
                 && word.contains('.')
                 && !word.contains("http")
             {
@@ -68,7 +70,7 @@ fn extract_deliverables_from_task(task: &str) -> Vec<String> {
             }
         }
     }
-    
+
     // Deduplicate
     let seen: HashSet<_> = deliverables.iter().cloned().collect();
     seen.into_iter().collect()
@@ -89,7 +91,11 @@ fn check_missing_deliverables(deliverables: &[String]) -> Vec<String> {
 impl WorkingMemory {
     /// Build working memory from agent state
     pub fn from_state(state: &AgentState) -> Option<Self> {
-        eprintln!("[WORKING_MEMORY] from_state called with task='{}', files_written={}", state.task, state.files_written.len());
+        eprintln!(
+            "[WORKING_MEMORY] from_state called with task='{}', files_written={}",
+            state.task,
+            state.files_written.len()
+        );
         if state.task.is_empty() {
             eprintln!("[WORKING_MEMORY] returning None: task is empty");
             return None;
@@ -105,7 +111,7 @@ impl WorkingMemory {
             .iter()
             .map(|record| record.mutation.path.clone())
             .collect();
-        
+
         // Also include files_written
         for file in &state.files_written {
             recent_files.insert(file.clone());
@@ -113,14 +119,21 @@ impl WorkingMemory {
 
         let result = Some(Self {
             original_intent: state.task.clone(),
-            objective_summary: state.task.split('\n').next().unwrap_or(&state.task).to_string(),
+            objective_summary: state
+                .task
+                .split('\n')
+                .next()
+                .unwrap_or(&state.task)
+                .to_string(),
             recent_files_changed: recent_files.into_iter().collect(),
             is_complete: false, // Will be set by completion gate
             missing_deliverables,
         });
-        eprintln!("[WORKING_MEMORY] from_state returning Some with {} recent files, {} missing deliverables", 
+        eprintln!(
+            "[WORKING_MEMORY] from_state returning Some with {} recent files, {} missing deliverables",
             result.as_ref().unwrap().recent_files_changed.len(),
-            result.as_ref().unwrap().missing_deliverables.len());
+            result.as_ref().unwrap().missing_deliverables.len()
+        );
         result
     }
 
@@ -138,7 +151,10 @@ impl WorkingMemory {
         }
 
         // Phrase patterns
-        if lower.starts_with("fix that") || lower.starts_with("fix it") || lower.starts_with("try again") {
+        if lower.starts_with("fix that")
+            || lower.starts_with("fix it")
+            || lower.starts_with("try again")
+        {
             return FollowUpIntent::FixThat;
         }
         if lower.starts_with("do the rest")
@@ -154,10 +170,14 @@ impl WorkingMemory {
         {
             return FollowUpIntent::Improve;
         }
-        if lower.starts_with("now validate") || lower.starts_with("validate it") || lower.starts_with("check it") {
+        if lower.starts_with("now validate")
+            || lower.starts_with("validate it")
+            || lower.starts_with("check it")
+        {
             return FollowUpIntent::Validate;
         }
-        if lower.starts_with("finish the remaining") || lower.starts_with("complete the remaining") {
+        if lower.starts_with("finish the remaining") || lower.starts_with("complete the remaining")
+        {
             return FollowUpIntent::FinishRemaining;
         }
         if words.len() >= 2 && words[0] == "continue" {
@@ -169,7 +189,10 @@ impl WorkingMemory {
 
     /// Resolve a follow-up intent into a concrete task
     pub fn resolve_follow_up(&self, intent: FollowUpIntent) -> Option<String> {
-        eprintln!("[WORKING_MEMORY] resolve_follow_up called with intent {:?}", intent);
+        eprintln!(
+            "[WORKING_MEMORY] resolve_follow_up called with intent {:?}",
+            intent
+        );
         let result = match intent {
             FollowUpIntent::Continue => {
                 if !self.missing_deliverables.is_empty() {
@@ -185,12 +208,10 @@ impl WorkingMemory {
                     ))
                 }
             }
-            FollowUpIntent::FixThat => {
-                Some(format!(
-                    "Fix issues in: {}. Original: {}",
-                    self.objective_summary, self.original_intent
-                ))
-            }
+            FollowUpIntent::FixThat => Some(format!(
+                "Fix issues in: {}. Original: {}",
+                self.objective_summary, self.original_intent
+            )),
             FollowUpIntent::DoTheRest | FollowUpIntent::FinishRemaining => {
                 if !self.missing_deliverables.is_empty() {
                     let remaining = self.missing_deliverables.join(", ");
@@ -218,18 +239,22 @@ impl WorkingMemory {
                         files, self.objective_summary
                     ))
                 } else {
-                    Some(format!("Improve quality of work on: {}", self.objective_summary))
+                    Some(format!(
+                        "Improve quality of work on: {}",
+                        self.objective_summary
+                    ))
                 }
             }
-            FollowUpIntent::Validate => {
-                Some(format!(
-                    "Validate the current state of: {}",
-                    self.objective_summary
-                ))
-            }
+            FollowUpIntent::Validate => Some(format!(
+                "Validate the current state of: {}",
+                self.objective_summary
+            )),
             FollowUpIntent::NewTask => None,
         };
-        eprintln!("[WORKING_MEMORY] resolve_follow_up returning {:?}", result.as_ref().map(|s| &s[..20.min(s.len())]));
+        eprintln!(
+            "[WORKING_MEMORY] resolve_follow_up returning {:?}",
+            result.as_ref().map(|s| &s[..20.min(s.len())])
+        );
         result
     }
 
@@ -257,7 +282,6 @@ pub fn resolve_follow_up_task(state: &AgentState, input_task: &str) -> Option<St
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn detects_continue_intent() {

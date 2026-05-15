@@ -53,7 +53,7 @@ cargo build --release
 
 ### 4. Pull Models
 ```bash
-ollama pull qwen2.5-coder:14b
+ollama pull huihui_ai/deepseek-r1-abliterated:14b
 ```
 
 ### 5. Start Ollama
@@ -110,10 +110,10 @@ If no workspace provided, restores last active repo from persistence.
 **Switch models**:
 ```bash
 # In TUI
-/model qwen2.5-coder:7b
+/model huihui_ai/deepseek-r1-abliterated:14b
 
 # Or environment
-FORGE_PLANNER_MODEL=qwen2.5-coder:7b ./rasputin ./workspace
+FORGE_PLANNER_MODEL=huihui_ai/deepseek-r1-abliterated:14b ./rasputin ./workspace
 ```
 
 **List available**:
@@ -175,11 +175,11 @@ rm -rf ~/.local/share/rasputin/
 
 **For faster startup**:
 - Keep `forge_bootstrap` built: `cargo build -p forge_bootstrap`
-- Use smaller models: `qwen2.5-coder:7b`
+- Use smaller legacy models: `qwen2.5-coder:7b`
 - Enable release builds
 
 **For better quality**:
-- Use larger models: `qwen2.5-coder:14b`
+- Use the recommended 14B model: `huihui_ai/deepseek-r1-abliterated:14b`
 - Increase iteration limit (via fork)
 - Provide more context in tasks
 
@@ -275,10 +275,11 @@ No built-in metrics export (Prometheus, etc.)—local-only design.
 ## Security Operations
 
 ### File System
-- Sandbox: Repository boundary enforcement
+- Repository boundary enforcement
 - No arbitrary path traversal
 - Read-before-write gate
 - Validation-gated persistence
+- No OS/container sandbox in the current runtime
 
 ### Network
 - Ollama only: localhost:11434
@@ -287,8 +288,9 @@ No built-in metrics export (Prometheus, etc.)—local-only design.
 
 ### Process
 - Worker spawned per task
-- Process isolation
+- Bounded worker execution
 - Clean termination on exit
+- Worker process separation is not a security sandbox
 
 ## Update Procedures
 

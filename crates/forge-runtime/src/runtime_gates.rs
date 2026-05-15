@@ -1917,7 +1917,8 @@ mod tests {
         let first_path = write_relative_artifact(&first, "# Overview\n\nContract doc.\n");
         let second_path = write_relative_artifact(&second, "# Architecture\n\nContract doc.\n");
         let task = explicit_contract_task(&[&first, &second]);
-        let state = validated_state_with_written_paths(task, &[first_path.clone(), second_path.clone()]);
+        let state =
+            validated_state_with_written_paths(task, &[first_path.clone(), second_path.clone()]);
         let reason = CompletionReason::new(&format!(
             "Created all 2 required artifact(s): {}, {}",
             first, second
@@ -1947,7 +1948,8 @@ mod tests {
         let first_path = write_relative_artifact(&first, "# Overview\n\nContract doc.\n");
         let second_path = write_relative_artifact(&second, "# Architecture\n\nContract doc.\n");
         let task = explicit_contract_task(&[&first, &second]);
-        let state = validated_state_with_written_paths(task, &[first_path.clone(), second_path.clone()]);
+        let state =
+            validated_state_with_written_paths(task, &[first_path.clone(), second_path.clone()]);
         let reason = CompletionReason::new("Created README.md with updated markdown content");
 
         let result = CompletionGate::evaluate(&reason, &state, false, &[]);

@@ -44,8 +44,8 @@ use crate::state::AgentState;
 use crate::tool_registry::ToolExecutor;
 use crate::types::{
     ChainExecutionResult, CompletionReason, ExecutionContext, ExecutionMode, ForgeError,
-    JsonlLogEntry, LogSeverity, Mutation, MutationType, PlannerOutput, SessionStatus, ToolCall,
-    ToolName, ToolResult,
+    JsonlLogEntry, LogSeverity, Mutation, MutationType, PlannerOutput, SandboxMode, SessionStatus,
+    ToolCall, ToolName, ToolResult,
 };
 use serde::Deserialize;
 use std::collections::VecDeque;
@@ -71,6 +71,7 @@ pub struct RuntimeConfig {
     pub task: String,
     pub auto_revert: bool,
     pub mode: ExecutionMode,
+    pub sandbox_mode: SandboxMode,
     // PHASE 3: Planner configuration
     pub planner_type: String, // "stub", "intelligent", "model", or "http"
     pub planner_endpoint: String, // HTTP endpoint for model planner
@@ -88,6 +89,7 @@ impl Default for RuntimeConfig {
             task: "Create a hello.txt file with 'hello world' content".to_string(),
             auto_revert: true,
             mode: ExecutionMode::Edit,
+            sandbox_mode: SandboxMode::RepoBoundaryOnly,
             // Default to the stronger local coder model when available.
             planner_type: "http".to_string(),
             planner_endpoint: "http://127.0.0.1:11434".to_string(),
@@ -408,44 +410,75 @@ impl Runtime {
     /// Create a new runtime instance
     pub fn new(config: RuntimeConfig) -> Result<Self, ForgeError> {
         let mut config = config;
-        
+        if !config.sandbox_mode.is_currently_supported() {
+            return Err(ForgeError::InvalidConfiguration(format!(
+                "sandbox_mode '{}' is declared but not implemented; current runtime supports only 'none' and 'repo_boundary_only'",
+                config.sandbox_mode.as_config_value()
+            )));
+        }
+
         // CODEX-LIKE CONTINUITY: Try to load previous state and resolve follow-up
         let previous_state = AgentState::load_for_continuity();
-        let detected_intent = crate::working_memory::WorkingMemory::detect_follow_up_intent(&config.task);
+        let detected_intent =
+            crate::working_memory::WorkingMemory::detect_follow_up_intent(&config.task);
         let is_follow_up = detected_intent != crate::working_memory::FollowUpIntent::NewTask;
-        
-        let (mut state, resolved_task) = if is_follow_up {
+
+        let (mut state, _resolved_task) = if is_follow_up {
             if let Some(ref prev) = previous_state {
                 // Try to resolve follow-up against working memory
                 if let Some(memory) = crate::working_memory::WorkingMemory::from_state(prev) {
-                    let intent = crate::working_memory::WorkingMemory::detect_follow_up_intent(&config.task);
+                    let intent =
+                        crate::working_memory::WorkingMemory::detect_follow_up_intent(&config.task);
                     if let Some(resolved) = memory.resolve_follow_up(intent) {
-                        eprintln!("[RUNTIME] Continuity: Resolved '{}' -> '{}'", config.task, resolved);
+                        eprintln!(
+                            "[RUNTIME] Continuity: Resolved '{}' -> '{}'",
+                            config.task, resolved
+                        );
                         // Use the ORIGINAL task (from previous state) for the new state,
                         // not the resolved task. This prevents recursive "Continue working on:" accumulation.
-                        let mut new_state = AgentState::new(config.max_iterations, prev.task.clone(), config.mode);
+                        let mut new_state =
+                            AgentState::new(config.max_iterations, prev.task.clone(), config.mode);
                         // Copy relevant context from previous state
                         new_state.change_history = prev.change_history.clone();
                         new_state.files_written = prev.files_written.clone();
                         (new_state, Some(resolved))
                     } else {
-                        (AgentState::new(config.max_iterations, config.task.clone(), config.mode), None)
+                        (
+                            AgentState::new(
+                                config.max_iterations,
+                                config.task.clone(),
+                                config.mode,
+                            ),
+                            None,
+                        )
                     }
                 } else {
-                    (AgentState::new(config.max_iterations, config.task.clone(), config.mode), None)
+                    (
+                        AgentState::new(config.max_iterations, config.task.clone(), config.mode),
+                        None,
+                    )
                 }
             } else {
-                eprintln!("[RUNTIME] Warning: Follow-up '{}' but no previous state found", config.task);
-                (AgentState::new(config.max_iterations, config.task.clone(), config.mode), None)
+                eprintln!(
+                    "[RUNTIME] Warning: Follow-up '{}' but no previous state found",
+                    config.task
+                );
+                (
+                    AgentState::new(config.max_iterations, config.task.clone(), config.mode),
+                    None,
+                )
             }
         } else {
-            (AgentState::new(config.max_iterations, config.task.clone(), config.mode), None)
+            (
+                AgentState::new(config.max_iterations, config.task.clone(), config.mode),
+                None,
+            )
         };
-        
+
         // Note: We don't update config.task here because we want to preserve
         // the original follow-up input (like "continue") in the saved state,
         // not the resolved task. The resolved task is only used for this run.
-        
+
         let session_id = state.session_id.clone();
         let resolved_model = resolve_planner_model(&config.planner_endpoint, &config.planner_model);
         eprintln!("[RUNTIME] {}", resolved_model.note);
@@ -4240,6 +4273,24 @@ mod tests {
         report
     }
 
+    #[test]
+    fn direct_runtime_rejects_disposable_workspace_mode() {
+        let config = RuntimeConfig {
+            sandbox_mode: SandboxMode::DisposableWorkspace,
+            ..RuntimeConfig::default()
+        };
+
+        let error = match Runtime::new(config) {
+            Ok(_) => panic!("disposable_workspace should be rejected by direct runtime"),
+            Err(error) => error.to_string(),
+        };
+
+        assert!(
+            error.contains("sandbox_mode 'disposable_workspace' is declared but not implemented")
+        );
+        assert!(error.contains("current runtime supports only 'none' and 'repo_boundary_only'"));
+    }
+
     struct CurrentDirGuard {
         original: PathBuf,
     }
@@ -5544,6 +5595,7 @@ mod tests {
             task: "Create src/greeting.rs with a simple Rust function. Read Cargo.toml and src/lib.rs first. Complete only after src/greeting.rs exists.".to_string(),
             auto_revert: true,
             mode: ExecutionMode::Edit,
+            sandbox_mode: SandboxMode::RepoBoundaryOnly,
             planner_type: "http".to_string(),
             planner_endpoint: "http://127.0.0.1:11434".to_string(),
             planner_model: "14b".to_string(),

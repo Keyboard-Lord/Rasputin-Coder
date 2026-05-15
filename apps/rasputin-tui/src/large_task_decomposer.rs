@@ -3,11 +3,13 @@
 //! Breaks large multi-artifact prompts into executable, bounded steps.
 //! Never sends huge prompts directly to Forge - always decompose first.
 
-use crate::artifact_contract::{ArtifactContract, RequiredArtifact, EffortLevel};
+use crate::artifact_contract::{ArtifactContract, RequiredArtifact};
 use crate::large_prompt_classifier::{LargePromptClassifier, PromptClassification};
-use crate::persistence::{PersistentChain, PersistentChainStep, ChainStepStatus, ChainLifecycleStatus};
+use crate::persistence::{
+    ChainLifecycleStatus, ChainStepStatus, PersistentChain, PersistentChainStep,
+};
 use std::path::Path;
-use tracing::{info, debug, warn};
+use tracing::{debug, info, warn};
 
 /// Result of decomposing a large task
 #[derive(Debug, Clone)]
@@ -42,10 +44,10 @@ pub enum StepType {
 /// Recovery strategy for failed steps
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecoveryStrategy {
-    SimplifyPrompt,     // Reduce complexity, strip constraints
-    AddExamples,        // Include example output format
+    SimplifyPrompt,      // Reduce complexity, strip constraints
+    AddExamples,         // Include example output format
     AlternativeApproach, // Try different angle/perspective
-    HumanEscalation,    // Flag for user intervention
+    HumanEscalation,     // Flag for user intervention
 }
 
 /// Self-correction configuration
@@ -82,28 +84,28 @@ pub struct LargeTaskDecomposer;
 
 impl LargeTaskDecomposer {
     /// Main entry point: decompose a prompt into executable chain
-    pub fn decompose(
-        prompt: &str,
-        repo_path: impl AsRef<Path>,
-    ) -> Option<DecomposedTask> {
+    pub fn decompose(prompt: &str, repo_path: impl AsRef<Path>) -> Option<DecomposedTask> {
         debug!("Attempting to decompose prompt: {} chars", prompt.len());
-        
+
         // Step 1: Classify the prompt
         let classification = LargePromptClassifier::classify(prompt, Some(repo_path.as_ref()));
-        
+
         match classification {
             PromptClassification::LargeProject(contract) => {
-                info!("Detected large project with {} artifacts", contract.artifacts.len());
-                
+                info!(
+                    "Detected large project with {} artifacts",
+                    contract.artifacts.len()
+                );
+
                 // Step 2: Determine strategy
                 let strategy = Self::determine_strategy(&contract);
-                
+
                 // Step 3: Decompose into steps
                 let steps = Self::create_steps(&contract, &strategy);
-                
+
                 // Step 4: Create persistent chain
                 let chain = Self::create_chain(&contract, &steps, repo_path.as_ref());
-                
+
                 Some(DecomposedTask {
                     original_prompt: prompt.to_string(),
                     contract,
@@ -122,12 +124,15 @@ impl LargeTaskDecomposer {
             }
         }
     }
-    
+
     /// Determine the best decomposition strategy
     fn determine_strategy(contract: &ArtifactContract) -> DecompositionStrategy {
         // Check for dependencies
-        let has_deps = contract.artifacts.iter().any(|a| !a.dependencies.is_empty());
-        
+        let has_deps = contract
+            .artifacts
+            .iter()
+            .any(|a| !a.dependencies.is_empty());
+
         if has_deps {
             DecompositionStrategy::DependencyTree
         } else if contract.artifacts.len() > 10 {
@@ -137,7 +142,7 @@ impl LargeTaskDecomposer {
             DecompositionStrategy::Sequential
         }
     }
-    
+
     /// Create decomposed steps from contract
     fn create_steps(
         contract: &ArtifactContract,
@@ -145,7 +150,7 @@ impl LargeTaskDecomposer {
     ) -> Vec<DecomposedStep> {
         let mut steps = vec![];
         let mut step_num = 0;
-        
+
         // Phase 0: Planning and inventory
         step_num += 1;
         steps.push(DecomposedStep {
@@ -156,7 +161,7 @@ impl LargeTaskDecomposer {
             step_type: StepType::Planning,
             estimated_tokens: 2000,
         });
-        
+
         // Phase 1: Source mapping (only for very large repos >10 artifacts)
         if contract.artifacts.len() > 10 {
             step_num += 1;
@@ -169,19 +174,17 @@ impl LargeTaskDecomposer {
                 estimated_tokens: 2000,
             });
         }
-        
+
         // Phase 2-N: Generate each artifact
         // Order depends on strategy
         let artifact_order = match strategy {
-            DecompositionStrategy::DependencyTree => {
-                contract.execution_order()
-            }
-            DecompositionStrategy::Sequential => {
-                (0..contract.artifacts.len()).collect()
-            }
+            DecompositionStrategy::DependencyTree => contract.execution_order(),
+            DecompositionStrategy::Sequential => (0..contract.artifacts.len()).collect(),
             DecompositionStrategy::ParallelSafe => {
                 // Sort by effort (smaller first for quick wins)
-                let mut indexed: Vec<_> = contract.artifacts.iter()
+                let mut indexed: Vec<_> = contract
+                    .artifacts
+                    .iter()
                     .enumerate()
                     .map(|(i, a)| (i, a.estimated_effort))
                     .collect();
@@ -189,20 +192,22 @@ impl LargeTaskDecomposer {
                 indexed.into_iter().map(|(i, _)| i).collect()
             }
         };
-        
+
         for artifact_idx in artifact_order {
             let artifact = &contract.artifacts[artifact_idx];
             step_num += 1;
-            
+
             let prompt = Self::build_artifact_prompt(contract, artifact);
             let estimated_tokens = Self::estimate_tokens(&prompt);
-            
+
             steps.push(DecomposedStep {
                 step_number: step_num,
                 description: format!(
                     "Phase {}: Create {}",
                     step_num,
-                    artifact.path.file_name()
+                    artifact
+                        .path
+                        .file_name()
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_else(|| format!("artifact-{}", artifact_idx))
                 ),
@@ -212,7 +217,7 @@ impl LargeTaskDecomposer {
                 estimated_tokens,
             });
         }
-        
+
         // Phase Z: Final validation
         step_num += 1;
         steps.push(DecomposedStep {
@@ -223,10 +228,10 @@ impl LargeTaskDecomposer {
             step_type: StepType::Validation,
             estimated_tokens: 1500,
         });
-        
+
         steps
     }
-    
+
     /// Create persistent chain from decomposed steps
     fn create_chain(
         contract: &ArtifactContract,
@@ -234,9 +239,10 @@ impl LargeTaskDecomposer {
         repo_path: &Path,
     ) -> PersistentChain {
         let now = chrono::Local::now();
-        
-        let chain_steps: Vec<PersistentChainStep> = steps.iter().map(|step| {
-            PersistentChainStep {
+
+        let chain_steps: Vec<PersistentChainStep> = steps
+            .iter()
+            .map(|step| PersistentChainStep {
                 id: format!("step-{}", step.step_number),
                 description: step.description.clone(),
                 status: ChainStepStatus::Pending,
@@ -256,14 +262,22 @@ impl LargeTaskDecomposer {
                 completed_at: None,
                 error_message: None,
                 replay_record: None,
-            }
-        }).collect();
-        
+            })
+            .collect();
+
         let chain_id = format!("decomposed-{}", uuid::Uuid::new_v4());
-        
+
         PersistentChain {
             id: chain_id,
-            name: format!("{} artifacts: {}", contract.artifacts.len(), contract.source_prompt_summary.chars().take(50).collect::<String>()),
+            name: format!(
+                "{} artifacts: {}",
+                contract.artifacts.len(),
+                contract
+                    .source_prompt_summary
+                    .chars()
+                    .take(50)
+                    .collect::<String>()
+            ),
             objective: contract.source_prompt_summary.clone(),
             raw_prompt: format!(
                 "DECOMPOSED TASK\nContract: {}\nStrategy: {:?}\nArtifacts: {}\n\nOriginal:\n{}",
@@ -293,7 +307,7 @@ impl LargeTaskDecomposer {
             audit_log: crate::state::AuditLog::new(),
         }
     }
-    
+
     /// Build planning phase prompt - COMPACT
     fn build_planning_prompt(contract: &ArtifactContract) -> String {
         format!(
@@ -307,7 +321,7 @@ impl LargeTaskDecomposer {
             contract.artifacts.len()
         )
     }
-    
+
     /// Build source mapping phase prompt - COMPACT
     fn build_source_mapping_prompt(_contract: &ArtifactContract) -> String {
         format!(
@@ -319,19 +333,19 @@ impl LargeTaskDecomposer {
             Output: Summary to guide artifact generation."
         )
     }
-    
+
     /// Build artifact generation prompt - COMPACTED to ≤3000 chars, ONE FILE ONLY
-    fn build_artifact_prompt(
-        contract: &ArtifactContract,
-        artifact: &RequiredArtifact,
-    ) -> String {
-        let filename = artifact.path.file_name()
+    fn build_artifact_prompt(contract: &ArtifactContract, artifact: &RequiredArtifact) -> String {
+        let filename = artifact
+            .path
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "artifact".to_string());
-        
+
         // Compact, focused prompt ≤3000 characters
         let prompt = format!(
-            "Create file: {}\n\n\
+            "Create file: {}\n\
+            Filename: {}\n\n\
             Purpose: {}\n\n\
             READ FIRST:\n\
             - README.md, package.json, Cargo.toml (if exist)\n\
@@ -349,11 +363,12 @@ impl LargeTaskDecomposer {
             - Do NOT create other files\n\n\
             File {}/{}",
             artifact.path.display(),
+            filename,
             artifact.purpose,
             artifact.step_number,
             contract.artifacts.len()
         );
-        
+
         // Ensure ≤3000 chars
         if prompt.len() > 3000 {
             format!(
@@ -369,7 +384,7 @@ impl LargeTaskDecomposer {
             prompt
         }
     }
-    
+
     /// Build validation phase prompt - COMPACT
     fn build_validation_prompt(contract: &ArtifactContract) -> String {
         format!(
@@ -381,31 +396,41 @@ impl LargeTaskDecomposer {
             Required files:\n{}\n\n\
             Report: ✓ Complete or list issues.",
             contract.artifacts.len(),
-            contract.artifacts.iter()
-                .map(|a| format!("- {}\n", a.path.file_name().unwrap_or_default().to_string_lossy()))
+            contract
+                .artifacts
+                .iter()
+                .map(|a| format!(
+                    "- {}\n",
+                    a.path.file_name().unwrap_or_default().to_string_lossy()
+                ))
                 .collect::<String>()
         )
     }
-    
+
     /// Estimate tokens for a prompt
     fn estimate_tokens(prompt: &str) -> usize {
         // Rough approximation: ~4 chars per token
         (prompt.len() / 4).max(500).min(8000)
     }
-    
+
     /// Check if a prompt needs decomposition
     pub fn needs_decomposition(prompt: &str) -> bool {
         let classification = LargePromptClassifier::classify(prompt, None);
         matches!(classification, PromptClassification::LargeProject(_))
     }
-    
+
     /// Quick check for artifact count in prompt
     pub fn estimate_artifact_count(prompt: &str) -> usize {
         // Count numbered items with file extensions
-        prompt.lines()
+        prompt
+            .lines()
             .filter(|line| {
                 let trimmed = line.trim();
-                trimmed.chars().next().map(|c| c.is_numeric()).unwrap_or(false)
+                trimmed
+                    .chars()
+                    .next()
+                    .map(|c| c.is_numeric())
+                    .unwrap_or(false)
                     && trimmed.contains('.')
             })
             .count()
@@ -421,16 +446,18 @@ impl LargeTaskDecomposer {
         contract: ArtifactContract,
         strategy: DecompositionStrategy,
     ) -> DecomposedTask {
-        use crate::persistence::{ChainLifecycleStatus, ChainStepStatus, PersistentChain, PersistentChainStep};
+        use crate::persistence::{
+            ChainLifecycleStatus, ChainStepStatus, PersistentChain, PersistentChainStep,
+        };
         use chrono::Local;
-        
+
         let _root_dir = contract.root_dir.clone();
         let original_prompt = contract.source_prompt_summary.clone();
-        
+
         // Build steps from contract
         let mut steps: Vec<DecomposedStep> = vec![];
         let mut step_num = 0;
-        
+
         // Phase 0: Planning
         step_num += 1;
         steps.push(DecomposedStep {
@@ -441,7 +468,7 @@ impl LargeTaskDecomposer {
             step_type: StepType::Planning,
             estimated_tokens: 2000,
         });
-        
+
         // Phase 1: Source mapping (only for very large repos >10 artifacts)
         if contract.artifacts.len() > 10 {
             step_num += 1;
@@ -454,15 +481,13 @@ impl LargeTaskDecomposer {
                 estimated_tokens: 2000,
             });
         }
-        
+
         // Phase 2-N: Generate each artifact
         let artifact_indices: Vec<usize> = match strategy {
-            DecompositionStrategy::DependencyTree => {
-                contract.execution_order()
-            }
+            DecompositionStrategy::DependencyTree => contract.execution_order(),
             _ => (0..contract.artifacts.len()).collect(),
         };
-        
+
         for idx in artifact_indices {
             if let Some(artifact) = contract.artifacts.get(idx) {
                 step_num += 1;
@@ -476,7 +501,7 @@ impl LargeTaskDecomposer {
                 });
             }
         }
-        
+
         // Phase Z: Validation
         step_num += 1;
         steps.push(DecomposedStep {
@@ -487,9 +512,9 @@ impl LargeTaskDecomposer {
             step_type: StepType::Validation,
             estimated_tokens: 1500,
         });
-        
+
         let now = Local::now();
-        
+
         // Create persistent chain with all required fields
         let chain = PersistentChain {
             id: format!("decomposed-{}", uuid::Uuid::new_v4()),
@@ -497,8 +522,10 @@ impl LargeTaskDecomposer {
             objective: contract.source_prompt_summary.clone(),
             raw_prompt: original_prompt.clone(),
             status: ChainLifecycleStatus::Draft,
-            steps: steps.iter().enumerate().map(|(i, step)| {
-                PersistentChainStep {
+            steps: steps
+                .iter()
+                .enumerate()
+                .map(|(i, step)| PersistentChainStep {
                     id: format!("step-{}", i + 1),
                     description: step.description.clone(),
                     status: ChainStepStatus::Pending,
@@ -518,8 +545,8 @@ impl LargeTaskDecomposer {
                     completed_at: None,
                     error_message: None,
                     replay_record: None,
-                }
-            }).collect(),
+                })
+                .collect(),
             active_step: Some(0),
             repo_path: Some(contract.root_dir.to_string_lossy().to_string()),
             conversation_id: None,
@@ -538,7 +565,7 @@ impl LargeTaskDecomposer {
             git_grounding: None,
             audit_log: crate::state::AuditLog::new(),
         };
-        
+
         DecomposedTask {
             original_prompt,
             contract,
@@ -556,13 +583,15 @@ impl LargeTaskDecomposer {
         strategy: RecoveryStrategy,
     ) -> DecomposedStep {
         let recovery_prompt = Self::build_recovery_prompt(artifact, retry_count, strategy);
-        
+
         DecomposedStep {
             step_number: failed_step.step_number, // Keep same position
             description: format!(
                 "🔧 Recovery {} for {}",
                 retry_count,
-                artifact.path.file_name()
+                artifact
+                    .path
+                    .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| "artifact".to_string())
             ),
@@ -657,7 +686,7 @@ pub fn format_decomposition_summary(task: &DecomposedTask) -> String {
         String::new(),
         "Execution Plan:".to_string(),
     ];
-    
+
     for step in &task.steps {
         let icon = match step.step_type {
             StepType::Planning => "📋",
@@ -675,14 +704,14 @@ pub fn format_decomposition_summary(task: &DecomposedTask) -> String {
             step.estimated_tokens
         ));
     }
-    
+
     lines.join("\n")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_decompose_15_docs() {
         let prompt = r#"
@@ -692,26 +721,29 @@ Analyze the entire repository and create exactly 15 canonical documentation file
 ...
 15. docs/15_FUTURE_ROADMAP.md
 "#;
-        
+
         let task = LargeTaskDecomposer::decompose(prompt, "/tmp/test");
         assert!(task.is_some());
-        
+
         let task = task.unwrap();
         assert_eq!(task.contract.artifacts.len(), 15);
         assert!(task.steps.len() > 15); // Planning + mapping + artifacts + validation
-        
+
         // Check structure
         assert!(matches!(task.steps[0].step_type, StepType::Planning));
-        assert!(matches!(task.steps.last().unwrap().step_type, StepType::Validation));
+        assert!(matches!(
+            task.steps.last().unwrap().step_type,
+            StepType::Validation
+        ));
     }
-    
+
     #[test]
     fn test_regular_prompt_no_decomposition() {
         let prompt = "How do I write a Rust function?";
         let task = LargeTaskDecomposer::decompose(prompt, "/tmp/test");
         assert!(task.is_none());
     }
-    
+
     #[test]
     fn test_estimate_artifact_count() {
         let prompt = r#"

@@ -9,7 +9,9 @@
 //! - Registry owns registration, executor owns resolution
 //! - Unknown tools fail closed with ForgeError
 
-use crate::tools::batch_tools::{BatchReadFilesTool, BatchReplaceTool, BatchWriteFilesTool, SyncDirectoryTool};
+use crate::tools::batch_tools::{
+    BatchReadFilesTool, BatchReplaceTool, BatchWriteFilesTool, SyncDirectoryTool,
+};
 use crate::tools::browser_preview_tool::BrowserPreviewTool;
 use crate::tools::code_intelligence_tools::{
     DependencyGraphTool, EntryPointDetectorTool, LintRunnerTool, SymbolIndexTool, TestRunnerTool,

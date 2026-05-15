@@ -82,8 +82,10 @@ impl CompletionConfidenceEvaluator {
         }
 
         // Check required surfaces
-        let missing_surfaces =
-            Self::check_required_surfaces(&satisfaction.required_surfaces, chain.repo_path.as_deref());
+        let missing_surfaces = Self::check_required_surfaces(
+            &satisfaction.required_surfaces,
+            chain.repo_path.as_deref(),
+        );
         if !missing_surfaces.is_empty() {
             return CompletionConfidenceDecision::Continue {
                 reason: format!("Required surfaces missing: {:?}", missing_surfaces),
@@ -148,10 +150,9 @@ impl CompletionConfidenceEvaluator {
                 .is_some_and(|contract| contract.has_requirements())
         {
             CompletionConfidenceDecision::Continue {
-                reason: satisfaction
-                    .reason
-                    .clone()
-                    .unwrap_or_else(|| "All steps ran, but the explicit artifact contract is incomplete".to_string()),
+                reason: satisfaction.reason.clone().unwrap_or_else(|| {
+                    "All steps ran, but the explicit artifact contract is incomplete".to_string()
+                }),
             }
         } else if all_steps_complete {
             CompletionConfidenceDecision::HaltForClarification {
@@ -169,8 +170,10 @@ impl CompletionConfidenceEvaluator {
         let mut satisfaction = chain.objective_satisfaction.clone();
         satisfaction.checked_at = Some(chrono::Local::now());
 
-        let missing_surfaces =
-            Self::check_required_surfaces(&satisfaction.required_surfaces, chain.repo_path.as_deref());
+        let missing_surfaces = Self::check_required_surfaces(
+            &satisfaction.required_surfaces,
+            chain.repo_path.as_deref(),
+        );
 
         if let Some(contract) = satisfaction.artifact_contract.as_mut() {
             Self::refresh_artifact_contract(chain, contract);
@@ -205,7 +208,8 @@ impl CompletionConfidenceEvaluator {
             if let Some(contract_reason) = contract_reason {
                 satisfaction.reason = Some(contract_reason);
             } else {
-                satisfaction.reason = Some("All explicit completion requirements are satisfied.".to_string());
+                satisfaction.reason =
+                    Some("All explicit completion requirements are satisfied.".to_string());
             }
         } else {
             satisfaction.confidence = CompletionConfidence::PartialRecovery;
@@ -224,7 +228,10 @@ impl CompletionConfidenceEvaluator {
         satisfaction
     }
 
-    fn check_required_surfaces(surfaces: &[RequiredSurface], repo_path: Option<&str>) -> Vec<String> {
+    fn check_required_surfaces(
+        surfaces: &[RequiredSurface],
+        repo_path: Option<&str>,
+    ) -> Vec<String> {
         let mut missing = Vec::new();
 
         for surface in surfaces {
@@ -264,7 +271,9 @@ impl CompletionConfidenceEvaluator {
                 || satisfaction
                     .artifact_contract
                     .as_ref()
-                    .is_some_and(|contract| contract.has_requirements() && !contract.is_satisfied());
+                    .is_some_and(|contract| {
+                        contract.has_requirements() && !contract.is_satisfied()
+                    });
 
             if !explicit_requirements_remaining || satisfaction.objective_complete {
                 satisfaction.confidence = CompletionConfidence::ObjectiveSatisfied;
@@ -282,7 +291,10 @@ impl CompletionConfidenceEvaluator {
         }
     }
 
-    fn refresh_artifact_contract(chain: &PersistentChain, contract: &mut ArtifactCompletionContract) {
+    fn refresh_artifact_contract(
+        chain: &PersistentChain,
+        contract: &mut ArtifactCompletionContract,
+    ) {
         let repo_root = chain.repo_path.as_deref().map(PathBuf::from);
         let required_paths: Vec<String> = contract
             .required_filenames
@@ -317,7 +329,8 @@ impl CompletionConfidenceEvaluator {
         let mut unexpected = Vec::new();
         for path in chain.recorded_affected_paths() {
             let normalized = Self::normalize_contract_path(&path);
-            if !Self::matches_artifact_contract(&normalized, contract) || required_set.contains(&normalized)
+            if !Self::matches_artifact_contract(&normalized, contract)
+                || required_set.contains(&normalized)
             {
                 continue;
             }
@@ -357,7 +370,10 @@ impl CompletionConfidenceEvaluator {
         path.trim()
             .trim_matches(|ch: char| {
                 ch.is_whitespace()
-                    || matches!(ch, '`' | '"' | '\'' | ',' | ';' | ':' | '(' | ')' | '[' | ']')
+                    || matches!(
+                        ch,
+                        '`' | '"' | '\'' | ',' | ';' | ':' | '(' | ')' | '[' | ']'
+                    )
             })
             .trim_start_matches("./")
             .replace('\\', "/")
@@ -396,10 +412,7 @@ impl CompletionConfidenceEvaluator {
 
         let mut reasons = Vec::new();
         if !contract.missing_filenames.is_empty() {
-            reasons.push(format!(
-                "missing {}",
-                contract.missing_filenames.join(", ")
-            ));
+            reasons.push(format!("missing {}", contract.missing_filenames.join(", ")));
         }
         if !contract.empty_filenames.is_empty() {
             reasons.push(format!("empty {}", contract.empty_filenames.join(", ")));
@@ -497,14 +510,6 @@ impl AutonomousLoopController {
                     },
                 };
             }
-
-            // RELAXED: Use ANY available model rather than failing
-            if let Some(model) = installed_models.first() {
-                return PlannerPreflightOutcome::Ready {
-                    model: model.name.clone(),
-                    binding: PlannerModelBinding::AutoBound,
-                };
-            }
         }
 
         if let Some(model) = select_autonomous_planner_model(installed_models) {
@@ -514,13 +519,6 @@ impl AutonomousLoopController {
             };
         }
 
-        // RELAXED: If no coder models, use ANY available model
-        if let Some(model) = installed_models.first() {
-            return PlannerPreflightOutcome::Ready {
-                model: model.name.clone(),
-                binding: PlannerModelBinding::AutoBound,
-            };
-        }
         PlannerPreflightOutcome::MissingLocalModel
     }
 
@@ -530,12 +528,9 @@ impl AutonomousLoopController {
         policy.auto_resume = true;
         policy.auto_advance = true;
         policy.auto_retry_on_validation_failure = true;
-        // RELAXED: Don't require validation every step
-        policy.require_validation_each_step = false;
-        // RELAXED: Don't halt on failure - keep going
-        policy.halt_on_failure = false;
-        // RELAXED: Less approval gates
-        policy.require_approval_for_high = false;
+        policy.require_validation_each_step = true;
+        policy.halt_on_failure = true;
+        policy.require_approval_for_high = true;
         policy.allow_auto_low_risk = true;
     }
 
@@ -982,7 +977,9 @@ impl AutonomousLoopController {
         let role_match = role_patterns.iter().any(|p| lower.contains(p));
         let doc_gen_match = doc_gen_patterns.iter().any(|p| lower.contains(p));
         let multi_artifact_match = multi_artifact_patterns.iter().any(|p| lower.contains(p));
-        let imperative_match = imperative_markers.iter().any(|p| lower.starts_with(p) || lower.contains(p));
+        let imperative_match = imperative_markers
+            .iter()
+            .any(|p| lower.starts_with(p) || lower.contains(p));
         let section_match = section_headers.iter().any(|p| lower.contains(p));
 
         // Structured document patterns (numbered deliverables with descriptions)
@@ -992,7 +989,8 @@ impl AutonomousLoopController {
                 let l = l.trim();
                 l.starts_with("1.") || l.starts_with("2.") || l.starts_with("3.")
             })
-            .count() >= 2;
+            .count()
+            >= 2;
 
         // Bullet point lists (markdown-style)
         let has_bullet_list = original
@@ -1001,17 +999,32 @@ impl AutonomousLoopController {
                 let l = l.trim();
                 l.starts_with("- ") || l.starts_with("* ")
             })
-            .count() >= 2;
+            .count()
+            >= 2;
 
         // Calculate execution-intent score
         let mut score = 0;
-        if role_match { score += 3; }
-        if doc_gen_match { score += 2; }
-        if multi_artifact_match { score += 3; }
-        if imperative_match { score += 2; }
-        if section_match { score += 2; }
-        if has_numbered_deliverables { score += 2; }
-        if has_bullet_list { score += 1; }
+        if role_match {
+            score += 3;
+        }
+        if doc_gen_match {
+            score += 2;
+        }
+        if multi_artifact_match {
+            score += 3;
+        }
+        if imperative_match {
+            score += 2;
+        }
+        if section_match {
+            score += 2;
+        }
+        if has_numbered_deliverables {
+            score += 2;
+        }
+        if has_bullet_list {
+            score += 1;
+        }
 
         // Length heuristics for structured prompts
         let is_long_structured = line_count >= 5 && word_count >= 50;
@@ -1020,15 +1033,24 @@ impl AutonomousLoopController {
 
         // Decision threshold: if score >= 2 (lowered to catch more execution prompts)
         // or strong indicators present
-        let has_execution_indicators = score >= 2 ||
-            (is_long_structured && (role_match || doc_gen_match || multi_artifact_match || section_match)) ||
-            (is_medium_structured && (role_match || multi_artifact_match));
+        let has_execution_indicators = score >= 2
+            || (is_long_structured
+                && (role_match || doc_gen_match || multi_artifact_match || section_match))
+            || (is_medium_structured && (role_match || multi_artifact_match));
 
         // Very long structured prompts are almost certainly execution intent
-        let is_definitely_execution = is_very_long && (section_match || has_numbered_deliverables || multi_artifact_match || doc_gen_match);
+        let is_definitely_execution = is_very_long
+            && (section_match
+                || has_numbered_deliverables
+                || multi_artifact_match
+                || doc_gen_match);
 
         // Clear document generation with output format/deliverables is execution intent
-        let is_doc_gen_execution = doc_gen_match && (has_numbered_deliverables || has_bullet_list || section_match || is_medium_structured);
+        let is_doc_gen_execution = doc_gen_match
+            && (has_numbered_deliverables
+                || has_bullet_list
+                || section_match
+                || is_medium_structured);
 
         has_execution_indicators || is_definitely_execution || is_doc_gen_execution
     }
@@ -1128,13 +1150,19 @@ fn select_autonomous_planner_model(installed_models: &[InstalledModelCard]) -> O
 fn autonomous_model_rank(model: &str) -> usize {
     let lower = model.to_lowercase();
     if lower == DEFAULT_CODER_14B_MODEL {
+        // Primary: DeepSeek R1 14B (default)
         0
-    } else if lower.starts_with("qwen2.5-coder") && lower.contains("14b") {
+    } else if lower.starts_with("huihui_ai/deepseek") && lower.contains("14b") {
+        // Any other DeepSeek 14B variants
         1
-    } else if lower.starts_with("qwen2.5-coder") {
+    } else if lower.starts_with("qwen2.5-coder") && lower.contains("14b") {
+        // Legacy Qwen 14B models (backward compatibility)
         2
-    } else if lower == FALLBACK_PLANNER_MODEL {
+    } else if lower.starts_with("qwen2.5-coder") {
+        // Other Qwen 2.5 coder variants
         3
+    } else if lower == FALLBACK_PLANNER_MODEL {
+        4
     } else {
         usize::MAX
     }
@@ -1425,7 +1453,9 @@ Build a complete web application
 3. Documentation
 
 This is a long imperative prompt with many words and clear structure that should not go to plain chat but instead be routed to the goal execution pipeline for proper planning and execution.";
-        assert!(AutonomousLoopController::is_task_like_plain_text(large_prompt));
+        assert!(AutonomousLoopController::is_task_like_plain_text(
+            large_prompt
+        ));
 
         // Another large structured prompt
         let doc_gen_prompt = "Implement the following system architecture.
@@ -1440,7 +1470,9 @@ Current system has limitations.
 Must use Rust and be performant.
 
 This prompt contains detailed instructions and should be treated as an execution task, not a simple conversational query that can be handled by plain chat mode.";
-        assert!(AutonomousLoopController::is_task_like_plain_text(doc_gen_prompt));
+        assert!(AutonomousLoopController::is_task_like_plain_text(
+            doc_gen_prompt
+        ));
     }
 
     #[test]

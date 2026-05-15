@@ -84,13 +84,11 @@ impl ExplicitArtifactContract {
             .collect::<HashSet<_>>();
         for written in written_paths {
             let normalized = normalize_path_text(&written.to_string_lossy());
-            let matched_required = required_set
-                .iter()
-                .any(|expected| normalized == *expected || normalized.ends_with(&format!("/{}", expected)));
+            let matched_required = required_set.iter().any(|expected| {
+                normalized == *expected || normalized.ends_with(&format!("/{}", expected))
+            });
             if !matched_required && self.matches_artifact_family(written.as_path()) {
-                status
-                    .unexpected_paths
-                    .push(written.display().to_string());
+                status.unexpected_paths.push(written.display().to_string());
             }
         }
 
@@ -196,18 +194,32 @@ fn detect_explicit_artifact_count(statement: &str) -> Option<usize> {
         let next = words.get(idx + 1).copied().unwrap_or_default();
         let next_two = words.get(idx + 2).copied().unwrap_or_default();
 
-        if matches!(previous, "exactly" | "precisely" | "total" | "produce" | "creating")
-            || matches!(
-                next,
-                "artifact" | "artifacts" | "doc" | "docs" | "document" | "documents" | "file"
-                    | "files" | "markdown"
-            )
-            || matches!(
-                next_two,
-                "artifact" | "artifacts" | "doc" | "docs" | "document" | "documents" | "file"
-                    | "files" | "markdown"
-            )
-        {
+        if matches!(
+            previous,
+            "exactly" | "precisely" | "total" | "produce" | "creating"
+        ) || matches!(
+            next,
+            "artifact"
+                | "artifacts"
+                | "doc"
+                | "docs"
+                | "document"
+                | "documents"
+                | "file"
+                | "files"
+                | "markdown"
+        ) || matches!(
+            next_two,
+            "artifact"
+                | "artifacts"
+                | "doc"
+                | "docs"
+                | "document"
+                | "documents"
+                | "file"
+                | "files"
+                | "markdown"
+        ) {
             return Some(count);
         }
     }

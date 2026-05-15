@@ -4,12 +4,13 @@
 //! Provides progress tracking, checkpoint/resume, and bounded execution.
 
 use crate::tool_registry::Tool;
-use crate::types::{ExecutionContext, ExecutionMode, ForgeError, Mutation, MutationType, ToolArguments, ToolName, ToolResult};
-use anyhow::Result;
+use crate::types::{
+    ExecutionContext, ExecutionMode, ForgeError, Mutation, MutationType, ToolArguments, ToolName,
+    ToolResult,
+};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tracing::{debug, info, warn};
 
 /// Maximum files per batch operation
 pub const MAX_BATCH_SIZE: usize = 1000;
@@ -60,10 +61,17 @@ impl Tool for BatchReadFilesTool {
     }
 
     fn allowed_in_mode(&self, mode: ExecutionMode) -> bool {
-        matches!(mode, ExecutionMode::Analysis | ExecutionMode::Edit | ExecutionMode::Batch)
+        matches!(
+            mode,
+            ExecutionMode::Analysis | ExecutionMode::Edit | ExecutionMode::Batch
+        )
     }
 
-    fn execute(&self, args: &ToolArguments, ctx: &ExecutionContext) -> Result<ToolResult, ForgeError> {
+    fn execute(
+        &self,
+        args: &ToolArguments,
+        ctx: &ExecutionContext,
+    ) -> Result<ToolResult, ForgeError> {
         let paths_str = args.require("paths")?;
         let max_file_size: usize = args
             .get("max_file_size")
@@ -117,19 +125,17 @@ impl Tool for BatchReadFilesTool {
                         }
                         Err(e) => {
                             progress.failed += 1;
-                            progress.errors.push((
-                                path_str.to_string(),
-                                format!("Read error: {}", e),
-                            ));
+                            progress
+                                .errors
+                                .push((path_str.to_string(), format!("Read error: {}", e)));
                         }
                     }
                 }
                 Err(e) => {
                     progress.failed += 1;
-                    progress.errors.push((
-                        path_str.to_string(),
-                        format!("Metadata error: {}", e),
-                    ));
+                    progress
+                        .errors
+                        .push((path_str.to_string(), format!("Metadata error: {}", e)));
                 }
             }
         }
@@ -164,9 +170,10 @@ impl Tool for BatchReadFilesTool {
             success: progress.failed == 0,
             output: Some(output),
             error: if progress.failed > 0 {
-                Some(crate::types::ToolError::ExecutionFailed(
-                    format!("{} files failed", progress.failed)
-                ))
+                Some(crate::types::ToolError::ExecutionFailed(format!(
+                    "{} files failed",
+                    progress.failed
+                )))
             } else {
                 None
             },
@@ -195,7 +202,11 @@ impl Tool for BatchWriteFilesTool {
         )
     }
 
-    fn execute(&self, args: &ToolArguments, ctx: &ExecutionContext) -> Result<ToolResult, ForgeError> {
+    fn execute(
+        &self,
+        args: &ToolArguments,
+        ctx: &ExecutionContext,
+    ) -> Result<ToolResult, ForgeError> {
         let files_json = args.require("files")?;
 
         let files: HashMap<String, String> = serde_json::from_str(files_json)
@@ -220,10 +231,9 @@ impl Tool for BatchWriteFilesTool {
             // Validate path boundary
             if !full_path.starts_with(&ctx.working_dir) {
                 progress.failed += 1;
-                progress.errors.push((
-                    path_str,
-                    "Path outside working directory".to_string(),
-                ));
+                progress
+                    .errors
+                    .push((path_str, "Path outside working directory".to_string()));
                 continue;
             }
 
@@ -253,10 +263,9 @@ impl Tool for BatchWriteFilesTool {
                 }
                 Err(e) => {
                     progress.failed += 1;
-                    progress.errors.push((
-                        path_str,
-                        format!("Write error: {}", e),
-                    ));
+                    progress
+                        .errors
+                        .push((path_str, format!("Write error: {}", e)));
                 }
             }
         }
@@ -277,9 +286,10 @@ impl Tool for BatchWriteFilesTool {
             success: progress.failed == 0,
             output: Some(output),
             error: if progress.failed > 0 {
-                Some(crate::types::ToolError::ExecutionFailed(
-                    format!("{} files failed to write", progress.failed)
-                ))
+                Some(crate::types::ToolError::ExecutionFailed(format!(
+                    "{} files failed to write",
+                    progress.failed
+                )))
             } else {
                 None
             },
@@ -308,7 +318,11 @@ impl Tool for BatchReplaceTool {
         )
     }
 
-    fn execute(&self, args: &ToolArguments, ctx: &ExecutionContext) -> Result<ToolResult, ForgeError> {
+    fn execute(
+        &self,
+        args: &ToolArguments,
+        ctx: &ExecutionContext,
+    ) -> Result<ToolResult, ForgeError> {
         let file_pattern = args.require("file_pattern")?;
         let old_text = args.require("old_text")?;
         let new_text = args.require("new_text")?;
@@ -357,10 +371,9 @@ impl Tool for BatchReplaceTool {
                             }
                             Err(e) => {
                                 progress.failed += 1;
-                                progress.errors.push((
-                                    path_str,
-                                    format!("Write error: {}", e),
-                                ));
+                                progress
+                                    .errors
+                                    .push((path_str.clone(), format!("Write error: {}", e)));
                             }
                         }
                     } else {
@@ -369,7 +382,9 @@ impl Tool for BatchReplaceTool {
                 }
                 Err(e) => {
                     progress.failed += 1;
-                    progress.errors.push((path_str, format!("Read error: {}", e)));
+                    progress
+                        .errors
+                        .push((path_str.clone(), format!("Read error: {}", e)));
                 }
             }
         }
@@ -383,9 +398,10 @@ impl Tool for BatchReplaceTool {
             success: progress.failed == 0,
             output: Some(output),
             error: if progress.failed > 0 {
-                Some(crate::types::ToolError::ExecutionFailed(
-                    format!("{} files failed", progress.failed)
-                ))
+                Some(crate::types::ToolError::ExecutionFailed(format!(
+                    "{} files failed",
+                    progress.failed
+                )))
             } else {
                 None
             },
@@ -414,7 +430,11 @@ impl Tool for SyncDirectoryTool {
         )
     }
 
-    fn execute(&self, args: &ToolArguments, ctx: &ExecutionContext) -> Result<ToolResult, ForgeError> {
+    fn execute(
+        &self,
+        args: &ToolArguments,
+        ctx: &ExecutionContext,
+    ) -> Result<ToolResult, ForgeError> {
         let structure_json = args.require("structure")?;
         let base_path = args
             .get("base_path")
@@ -454,9 +474,7 @@ impl Tool for SyncDirectoryTool {
             error: if errors.is_empty() {
                 None
             } else {
-                Some(crate::types::ToolError::ExecutionFailed(
-                    errors.join("; ")
-                ))
+                Some(crate::types::ToolError::ExecutionFailed(errors.join("; ")))
             },
             mutations: vec![],
             execution_time_ms: 0,

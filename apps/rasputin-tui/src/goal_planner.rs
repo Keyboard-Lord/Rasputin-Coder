@@ -7,7 +7,7 @@ use std::collections::HashSet;
 
 const MAX_MODEL_STEPS: usize = 12;
 
-pub struct QwenGoalPlanner;
+pub struct GoalPlanner;
 
 #[derive(Debug, Deserialize)]
 struct ModelPlan {
@@ -47,7 +47,7 @@ struct ModelRisk {
     level: String,
 }
 
-impl QwenGoalPlanner {
+impl GoalPlanner {
     pub fn build_messages(
         goal: &Goal,
         repo_evidence: &str,
@@ -83,10 +83,7 @@ impl QwenGoalPlanner {
         ]
     }
 
-    pub fn parse_response(
-        response: &str,
-        raw_prompt: &str,
-    ) -> Result<GeneratedPlan, String> {
+    pub fn parse_response(response: &str, raw_prompt: &str) -> Result<GeneratedPlan, String> {
         let json = extract_json_object(response)?;
         let model_plan: ModelPlan = serde_json::from_str(json)
             .map_err(|err| format!("model plan JSON did not match schema: {}", err))?;
@@ -194,16 +191,22 @@ impl QwenGoalPlanner {
                 .reasoning
                 .filter(|reasoning| !reasoning.trim().is_empty())
                 .unwrap_or_else(|| {
-                    "Qwen-Coder generated this plan from the goal and repository evidence."
-                        .to_string()
+                    "Planner generated this plan from the goal and repository evidence.".to_string()
                 }),
         })
     }
 
     fn system_prompt() -> &'static str {
-        "You are Qwen-Coder acting as Rasputin's autonomous SWE planner. \
-Return only one JSON object. Do not use markdown. \
-Schema: {\"objective\":\"short objective\",\"steps\":[{\"description\":\"imperative step\",\"action_type\":\"read|write|execute|validate|commit|external\",\"risk_level\":\"safe|caution|warning|critical\",\"likely_approval_needed\":false,\"affected_files\":[\"path\"]}],\"risks\":[{\"risk_type\":\"git_conflict|validation_failure|missing_context|approval_required|unprotected_write|external_dependency|mode_limitation\",\"description\":\"risk\",\"affected\":[\"path\"],\"mitigation\":\"mitigation\",\"level\":\"safe|caution|warning|critical\"}],\"required_context\":[\"path\"],\"reasoning\":\"why this sequence is correct\",\"safe_to_chain\":true}. \
+        "You are the Rasputin Goal Planner - an expert coding assistant that emits ONLY valid JSON. \
+CRITICAL OUTPUT RULES (VIOLATIONS = REJECTION): \
+1. EXACTLY ONE JSON object per response - NO other text of any kind \
+2. NO markdown fences (```json), NO prose, NO thinking, NO reasoning outside JSON \
+3. NO conversation, NO 'Here's the plan:', NO 'I will now' \
+4. If you naturally produce reasoning, wrap it ONLY inside the JSON 'reasoning' field \
+5. Strip ALL text before the first { and after the last } \
+\nREQUIRED JSON SCHEMA: \
+{\"objective\":\"short objective\",\"steps\":[{\"description\":\"imperative step\",\"action_type\":\"read|write|execute|validate|commit|external\",\"risk_level\":\"safe|caution|warning|critical\",\"likely_approval_needed\":false,\"affected_files\":[\"path\"]}],\"risks\":[{\"risk_type\":\"git_conflict|validation_failure|missing_context|approval_required|unprotected_write|external_dependency|mode_limitation\",\"description\":\"risk\",\"affected\":[\"path\"],\"mitigation\":\"mitigation\",\"level\":\"safe|caution|warning|critical\"}],\"required_context\":[\"path\"],\"reasoning\":\"why this sequence is correct\",\"safe_to_chain\":true} \
+\nPLANNING RULES: \
 Keep the plan bounded to 3-8 concrete steps. Preserve validation and approval gates. \
 Do not invent files; include file paths only when present in repository evidence or clearly implied by the goal. \
 The objective must preserve explicit deliverable contracts from the raw prompt: exact counts, artifact type, and exact filenames when provided. \
@@ -336,7 +339,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_qwen_plan_json_into_generated_plan() {
+    fn parses_planner_json_into_generated_plan() {
         let response = r#"{
             "objective": "Harden parser",
             "steps": [
@@ -362,7 +365,7 @@ mod tests {
         }"#;
 
         let raw_prompt = "Fix parser ambiguity in apps/rasputin-tui/src/commands.rs";
-        let plan = QwenGoalPlanner::parse_response(response, raw_prompt).expect("plan");
+        let plan = GoalPlanner::parse_response(response, raw_prompt).expect("plan");
 
         assert_eq!(plan.objective, "Harden parser");
         assert_eq!(plan.raw_prompt, raw_prompt);
@@ -380,7 +383,7 @@ mod tests {
     fn rejects_empty_model_plan() {
         let response = r#"{"objective":"empty","steps":[]}"#;
 
-        let err = QwenGoalPlanner::parse_response(response, "fallback").expect_err("error");
+        let err = GoalPlanner::parse_response(response, "fallback").expect_err("error");
 
         assert!(err.contains("no steps"));
     }
@@ -389,7 +392,7 @@ mod tests {
     fn extracts_json_from_fenced_response() {
         let response = "```json\n{\"steps\":[{\"description\":\"Validate build\",\"action_type\":\"validate\"}]}\n```";
         let raw_prompt = "Fix fallback parser";
-        let plan = QwenGoalPlanner::parse_response(response, raw_prompt).expect("plan");
+        let plan = GoalPlanner::parse_response(response, raw_prompt).expect("plan");
 
         assert_eq!(plan.steps[0].action_type, StepActionType::Validate);
         assert_eq!(plan.objective, raw_prompt);
@@ -415,7 +418,7 @@ mod tests {
         }"#;
         let raw_prompt = "Create exactly 2 markdown files with these precise filenames:\n1. docs/01_PROJECT_OVERVIEW.md\n2. docs/02_ARCHITECTURE.md";
 
-        let plan = QwenGoalPlanner::parse_response(response, raw_prompt).expect("plan");
+        let plan = GoalPlanner::parse_response(response, raw_prompt).expect("plan");
 
         assert_eq!(
             plan.objective,

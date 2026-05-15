@@ -7,7 +7,7 @@
 | Threat | Mitigation |
 |--------|------------|
 | Arbitrary code execution | Minimal tool surface, no shell in planner tools |
-| File system escape | Repository boundary validation, path traversal checks |
+| File system escape | Repository boundary validation, path traversal checks for file tools |
 | Prompt injection | Strict output contract, validation before execution |
 | Resource exhaustion | Bounded iterations, timeouts, process limits |
 | Data exfiltration | Local-only design, no external APIs |
@@ -23,7 +23,7 @@ Hard limits prevent runaway agents:
 - **Timeout**: 30s per planner call
 - **Temperature**: 0.0-0.1 (deterministic)
 
-### 2. Repository Sandboxing
+### 2. Repository Boundary Enforcement
 
 Tools enforce repository boundaries:
 ```rust
@@ -56,6 +56,21 @@ Mutations only persist after validation:
 
 Auto-revert on validation failure (fail-closed: **enabled by default**, can be disabled via configuration).
 
+## Sandbox Status
+
+Rasputin does not currently implement a true OS/container sandbox. Its current safety model is repository boundary enforcement plus bounded worker execution. File tools are restricted to the attached repository path, worker tasks run in separate processes, command execution is allowlisted/time-bounded, and mutations are validation-gated. This reduces accidental damage but does not provide the same guarantees as chroot, containers, VM isolation, seccomp, App Sandbox, or network namespaces.
+
+`disposable_workspace` improves workspace isolation by running TUI-launched tasks in a temporary git worktree and emitting a promotion report instead of mutating the source workspace. It is still not OS-level containment: commands and build scripts execute with the user's permissions inside the disposable worktree.
+
+Disposable workspace behavior is intentionally narrow:
+- Implemented only through TUI-managed execution paths.
+- Direct `forge_bootstrap` execution rejects `disposable_workspace`; the TUI creates the worktree and launches the child runtime with `repo_boundary_only`.
+- Worktrees are created under the system temporary directory and are rejected if the computed path is outside that root.
+- Changed files remain inside the disposable worktree until explicit promotion exists.
+- Promotion is report-only. There is no automatic source workspace mutation.
+- Source HEAD lookup, diff generation, promotion report generation, child spawn failure, cancellation, and cleanup failure are surfaced as failures.
+- `retain_on_failure` and `retain_on_success` preserve worktrees only when explicitly configured.
+
 ### 5. Minimal Tool Surface
 
 Planner sees only 5 tools:
@@ -67,12 +82,13 @@ Planner sees only 5 tools:
 
 No `execute_command` for planner (TUI-only).
 
-### 6. Process Isolation
+### 6. Bounded Worker Execution
 
 - One worker process per task
 - Clean termination on completion
 - Worker death doesn't corrupt TUI
 - No shared memory between components
+- Not a security sandbox or arbitrary-code containment boundary
 
 ### 7. Local-Only Design (Architecturally Enforced)
 

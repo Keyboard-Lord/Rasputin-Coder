@@ -401,7 +401,10 @@ mod tests {
         match second {
             PlannerOutput::ToolCall(tc) => {
                 assert_eq!(tc.name.as_str(), "write_file");
-                assert_eq!(tc.arguments.get("path"), Some("docs/01_PROJECT_OVERVIEW.md"));
+                assert_eq!(
+                    tc.arguments.get("path"),
+                    Some("docs/01_PROJECT_OVERVIEW.md")
+                );
                 std::fs::create_dir_all("docs").expect("create docs dir");
                 std::fs::write(
                     "docs/01_PROJECT_OVERVIEW.md",

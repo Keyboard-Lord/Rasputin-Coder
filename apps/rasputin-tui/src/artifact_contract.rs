@@ -3,10 +3,10 @@
 //! Defines what artifacts must be produced, their types, and validation rules.
 //! This is the core data structure that drives the large task decomposition.
 
-use crate::large_prompt_classifier::{ArtifactType, ArtifactValidationRule, ArtifactStatus};
-use std::path::{Path, PathBuf};
-use std::collections::HashMap;
+use crate::large_prompt_classifier::{ArtifactStatus, ArtifactType, ArtifactValidationRule};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Explicit contract for artifact generation
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -43,10 +43,10 @@ pub struct RequiredArtifact {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EffortLevel {
-    Small = 1,    // < 100 lines
-    Medium = 2,   // 100-500 lines  
-    Large = 3,    // 500-1000 lines
-    XLarge = 4,   // > 1000 lines
+    Small = 1,  // < 100 lines
+    Medium = 2, // 100-500 lines
+    Large = 3,  // 500-1000 lines
+    XLarge = 4, // > 1000 lines
 }
 
 /// Contract validation result
@@ -101,23 +101,93 @@ impl ArtifactContract {
     pub fn canonical_15_docs(root_dir: impl Into<PathBuf>) -> Self {
         let root = root_dir.into();
         let docs_dir = root.join("docs");
-        
+
         let artifact_specs = vec![
-            (1, "01_PROJECT_OVERVIEW.md", "Project overview and scope", EffortLevel::Medium),
-            (2, "02_ARCHITECTURE.md", "System architecture", EffortLevel::Large),
-            (3, "03_TECHNOLOGY_STACK.md", "Technology choices and rationale", EffortLevel::Medium),
-            (4, "04_API_REFERENCE.md", "API documentation", EffortLevel::Large),
-            (5, "05_CONFIGURATION.md", "Configuration options", EffortLevel::Medium),
-            (6, "06_DEVELOPMENT_GUIDE.md", "How to develop", EffortLevel::Medium),
-            (7, "07_TESTING_STRATEGY.md", "Testing approach", EffortLevel::Medium),
-            (8, "08_DEPLOYMENT.md", "Deployment instructions", EffortLevel::Medium),
-            (9, "09_SECURITY.md", "Security considerations", EffortLevel::Medium),
-            (10, "10_PERFORMANCE.md", "Performance characteristics", EffortLevel::Medium),
-            (11, "11_INTEGRATION.md", "Integration patterns", EffortLevel::Medium),
-            (12, "12_TROUBLESHOOTING.md", "Common issues and solutions", EffortLevel::Medium),
-            (13, "13_MIGRATION.md", "Migration guide", EffortLevel::Medium),
+            (
+                1,
+                "01_PROJECT_OVERVIEW.md",
+                "Project overview and scope",
+                EffortLevel::Medium,
+            ),
+            (
+                2,
+                "02_ARCHITECTURE.md",
+                "System architecture",
+                EffortLevel::Large,
+            ),
+            (
+                3,
+                "03_TECHNOLOGY_STACK.md",
+                "Technology choices and rationale",
+                EffortLevel::Medium,
+            ),
+            (
+                4,
+                "04_API_REFERENCE.md",
+                "API documentation",
+                EffortLevel::Large,
+            ),
+            (
+                5,
+                "05_CONFIGURATION.md",
+                "Configuration options",
+                EffortLevel::Medium,
+            ),
+            (
+                6,
+                "06_DEVELOPMENT_GUIDE.md",
+                "How to develop",
+                EffortLevel::Medium,
+            ),
+            (
+                7,
+                "07_TESTING_STRATEGY.md",
+                "Testing approach",
+                EffortLevel::Medium,
+            ),
+            (
+                8,
+                "08_DEPLOYMENT.md",
+                "Deployment instructions",
+                EffortLevel::Medium,
+            ),
+            (
+                9,
+                "09_SECURITY.md",
+                "Security considerations",
+                EffortLevel::Medium,
+            ),
+            (
+                10,
+                "10_PERFORMANCE.md",
+                "Performance characteristics",
+                EffortLevel::Medium,
+            ),
+            (
+                11,
+                "11_INTEGRATION.md",
+                "Integration patterns",
+                EffortLevel::Medium,
+            ),
+            (
+                12,
+                "12_TROUBLESHOOTING.md",
+                "Common issues and solutions",
+                EffortLevel::Medium,
+            ),
+            (
+                13,
+                "13_MIGRATION.md",
+                "Migration guide",
+                EffortLevel::Medium,
+            ),
             (14, "14_CHANGELOG.md", "Version history", EffortLevel::Small),
-            (15, "15_FUTURE_ROADMAP.md", "Future plans", EffortLevel::Small),
+            (
+                15,
+                "15_FUTURE_ROADMAP.md",
+                "Future plans",
+                EffortLevel::Small,
+            ),
         ];
 
         let artifacts: Vec<RequiredArtifact> = artifact_specs
@@ -140,7 +210,9 @@ impl ArtifactContract {
             validation_rules: vec![
                 ArtifactValidationRule::ExactCount { count: 15 },
                 ArtifactValidationRule::NonEmpty,
-                ArtifactValidationRule::Extension { ext: "md".to_string() },
+                ArtifactValidationRule::Extension {
+                    ext: "md".to_string(),
+                },
                 ArtifactValidationRule::RepoGrounded,
             ],
             source_prompt_summary: "Generate 15 canonical documentation files".to_string(),
@@ -157,7 +229,7 @@ impl ArtifactContract {
     pub fn multi_language_sdk(root_dir: impl Into<PathBuf>, languages: &[&str]) -> Self {
         let root = root_dir.into();
         let sdk_dir = root.join("sdk");
-        
+
         let mut artifacts = vec![];
         for (i, lang) in languages.iter().enumerate() {
             let (filename, purpose): (&str, &str) = match *lang {
@@ -173,20 +245,22 @@ impl ArtifactContract {
                 "kotlin" => ("src/main/kotlin/Client.kt", "Kotlin SDK"),
                 _ => ("client", "SDK"),
             };
-            
+
             artifacts.push(RequiredArtifact {
                 path: sdk_dir.join(lang.to_lowercase()).join(filename),
                 purpose: purpose.to_string(),
                 status: ArtifactStatus::Missing,
                 step_number: i + 1,
-                artifact_type: ArtifactType::Code { language: lang.to_string() },
+                artifact_type: ArtifactType::Code {
+                    language: lang.to_string(),
+                },
                 dependencies: vec![], // SDKs are independent
                 estimated_effort: EffortLevel::Large,
             });
         }
 
         let count = artifacts.len();
-        
+
         Self {
             contract_id: format!("contract-sdk-{}", uuid::Uuid::new_v4()),
             root_dir: root,
@@ -196,7 +270,10 @@ impl ArtifactContract {
                 ArtifactValidationRule::NonEmpty,
                 ArtifactValidationRule::RepoGrounded,
             ],
-            source_prompt_summary: format!("Generate SDK clients for {} languages", languages.join(", ")),
+            source_prompt_summary: format!(
+                "Generate SDK clients for {} languages",
+                languages.join(", ")
+            ),
             detected_patterns: vec!["multi_language".to_string(), "sdk_generation".to_string()],
             confidence: 90,
         }
@@ -206,7 +283,7 @@ impl ArtifactContract {
     pub fn test_suite(root_dir: impl Into<PathBuf>, coverage: TestCoverageLevel) -> Self {
         let root = root_dir.into();
         let tests_dir = root.join("tests");
-        
+
         let test_files = match coverage {
             TestCoverageLevel::Basic => vec![
                 ("unit.rs", "Unit tests for core functions"),
@@ -244,7 +321,7 @@ impl ArtifactContract {
             .collect();
 
         let count = artifacts.len();
-        
+
         Self {
             contract_id: format!("contract-tests-{}", uuid::Uuid::new_v4()),
             root_dir: root,
@@ -255,7 +332,10 @@ impl ArtifactContract {
                 ArtifactValidationRule::RepoGrounded,
             ],
             source_prompt_summary: format!("Generate {} test files", count),
-            detected_patterns: vec!["test_suite".to_string(), "comprehensive_testing".to_string()],
+            detected_patterns: vec![
+                "test_suite".to_string(),
+                "comprehensive_testing".to_string(),
+            ],
             confidence: 85,
         }
     }
@@ -264,13 +344,10 @@ impl ArtifactContract {
     pub fn validate(&self) -> ContractValidationResult {
         let mut violations = vec![];
         let mut warnings = vec![];
-        
+
         // Count by status
-        let mut by_status: HashMap<ArtifactStatus, usize> = HashMap::new();
-        for artifact in &self.artifacts {
-            *by_status.entry(artifact.status.clone()).or_insert(0) += 1;
-        }
-        
+        let by_status = self.count_by_status();
+
         // Calculate completion percentage
         let total = self.artifacts.len();
         let completed = by_status.get(&ArtifactStatus::Validated).unwrap_or(&0)
@@ -280,7 +357,21 @@ impl ArtifactContract {
         } else {
             0
         };
-        
+
+        let missing = self
+            .artifacts
+            .iter()
+            .filter(|a| matches!(a.status, ArtifactStatus::Missing | ArtifactStatus::Failed))
+            .map(|a| a.path.clone())
+            .collect::<Vec<_>>();
+        if !missing.is_empty() {
+            violations.push(ContractViolation {
+                rule: ArtifactValidationRule::NonEmpty,
+                message: format!("{} required artifacts are missing or failed", missing.len()),
+                affected_artifacts: missing,
+            });
+        }
+
         // Apply validation rules
         for rule in &self.validation_rules {
             match rule {
@@ -290,7 +381,8 @@ impl ArtifactContract {
                             rule: rule.clone(),
                             message: format!(
                                 "Expected exactly {} artifacts, found {}",
-                                count, self.artifacts.len()
+                                count,
+                                self.artifacts.len()
                             ),
                             affected_artifacts: vec![],
                         });
@@ -301,14 +393,19 @@ impl ArtifactContract {
                         if !self.artifacts.iter().any(|a| a.path == *required) {
                             violations.push(ContractViolation {
                                 rule: rule.clone(),
-                                message: format!("Missing required artifact: {}", required.display()),
+                                message: format!(
+                                    "Missing required artifact: {}",
+                                    required.display()
+                                ),
                                 affected_artifacts: vec![required.clone()],
                             });
                         }
                     }
                 }
                 ArtifactValidationRule::NonEmpty => {
-                    let empty = self.artifacts.iter()
+                    let empty = self
+                        .artifacts
+                        .iter()
                         .filter(|a| matches!(a.status, ArtifactStatus::Empty))
                         .map(|a| a.path.clone())
                         .collect::<Vec<_>>();
@@ -321,14 +418,22 @@ impl ArtifactContract {
                     }
                 }
                 ArtifactValidationRule::Extension { ext } => {
-                    let wrong_ext: Vec<_> = self.artifacts.iter()
-                        .filter(|a| !a.path.extension().map(|e| e == ext.as_str()).unwrap_or(false))
+                    let wrong_ext: Vec<_> = self
+                        .artifacts
+                        .iter()
+                        .filter(|a| {
+                            !a.path
+                                .extension()
+                                .map(|e| e == ext.as_str())
+                                .unwrap_or(false)
+                        })
                         .map(|a| a.path.clone())
                         .collect();
                     if !wrong_ext.is_empty() {
                         warnings.push(format!(
                             "{} artifacts don't have .{} extension",
-                            wrong_ext.len(), ext
+                            wrong_ext.len(),
+                            ext
                         ));
                     }
                 }
@@ -338,14 +443,17 @@ impl ArtifactContract {
                 }
                 ArtifactValidationRule::UniformType => {
                     let first_type = self.artifacts.first().map(|a| &a.artifact_type);
-                    let uniform = self.artifacts.iter().all(|a| Some(&a.artifact_type) == first_type);
+                    let uniform = self
+                        .artifacts
+                        .iter()
+                        .all(|a| Some(&a.artifact_type) == first_type);
                     if !uniform {
                         warnings.push("Artifacts are not of uniform type".to_string());
                     }
                 }
             }
         }
-        
+
         ContractValidationResult {
             valid: violations.is_empty(),
             violations,
@@ -355,16 +463,29 @@ impl ArtifactContract {
         }
     }
 
+    /// Count artifacts by lifecycle status.
+    pub fn count_by_status(&self) -> HashMap<ArtifactStatus, usize> {
+        let mut by_status = HashMap::new();
+        for artifact in &self.artifacts {
+            *by_status.entry(artifact.status.clone()).or_insert(0) += 1;
+        }
+        by_status
+    }
+
     /// Check if all artifacts are complete
     pub fn is_complete(&self) -> bool {
         self.artifacts.iter().all(|a| {
-            matches!(a.status, ArtifactStatus::Validated | ArtifactStatus::Drafted)
+            matches!(
+                a.status,
+                ArtifactStatus::Validated | ArtifactStatus::Drafted
+            )
         })
     }
 
     /// Get artifacts ready for generation (missing or failed)
     pub fn pending_artifacts(&self) -> Vec<&RequiredArtifact> {
-        self.artifacts.iter()
+        self.artifacts
+            .iter()
             .filter(|a| matches!(a.status, ArtifactStatus::Missing | ArtifactStatus::Failed))
             .collect()
     }
@@ -373,7 +494,7 @@ impl ArtifactContract {
     pub fn execution_order(&self) -> Vec<usize> {
         let mut order = vec![];
         let mut completed = std::collections::HashSet::new();
-        
+
         // Keep iterating until all artifacts are ordered
         while order.len() < self.artifacts.len() {
             let mut added = false;
@@ -382,7 +503,10 @@ impl ArtifactContract {
                     continue;
                 }
                 // Check if dependencies are satisfied
-                let deps_satisfied = artifact.dependencies.iter().all(|d| completed.contains(&(d - 1)));
+                let deps_satisfied = artifact
+                    .dependencies
+                    .iter()
+                    .all(|d| completed.contains(&(d - 1)));
                 if deps_satisfied || artifact.dependencies.is_empty() {
                     order.push(idx);
                     completed.insert(idx);
@@ -399,7 +523,7 @@ impl ArtifactContract {
                 break;
             }
         }
-        
+
         order
     }
 }
@@ -418,7 +542,7 @@ pub fn extract_contract_from_prompt(
 ) -> Option<ArtifactContract> {
     let lower = prompt.to_lowercase();
     let root = repo_path.into();
-    
+
     // Check for canonical 15 docs pattern
     if (lower.contains("15") || lower.contains("fifteen"))
         && lower.contains("doc")
@@ -426,18 +550,28 @@ pub fn extract_contract_from_prompt(
     {
         return Some(ArtifactContract::canonical_15_docs(root));
     }
-    
+
     // Check for SDK generation pattern
-    let sdk_languages = ["rust", "python", "javascript", "typescript", "go", "java", "csharp", "ruby"];
-    let requested_langs: Vec<&str> = sdk_languages.iter()
+    let sdk_languages = [
+        "rust",
+        "python",
+        "javascript",
+        "typescript",
+        "go",
+        "java",
+        "csharp",
+        "ruby",
+    ];
+    let requested_langs: Vec<&str> = sdk_languages
+        .iter()
         .filter(|lang| lower.contains(*lang))
         .copied()
         .collect();
-    
+
     if !requested_langs.is_empty() && lower.contains("sdk") {
         return Some(ArtifactContract::multi_language_sdk(root, &requested_langs));
     }
-    
+
     // Check for test suite pattern
     if lower.contains("test") && (lower.contains("suite") || lower.contains("comprehensive")) {
         let coverage = if lower.contains("comprehensive") {
@@ -449,7 +583,7 @@ pub fn extract_contract_from_prompt(
         };
         return Some(ArtifactContract::test_suite(root, coverage));
     }
-    
+
     None
 }
 
@@ -462,10 +596,15 @@ mod tests {
         let contract = ArtifactContract::canonical_15_docs("/tmp/test");
         assert_eq!(contract.artifacts.len(), 15);
         assert_eq!(contract.confidence, 95);
-        
+
         // Check first artifact
         let first = &contract.artifacts[0];
-        assert!(first.path.to_string_lossy().contains("01_PROJECT_OVERVIEW.md"));
+        assert!(
+            first
+                .path
+                .to_string_lossy()
+                .contains("01_PROJECT_OVERVIEW.md")
+        );
         assert_eq!(first.step_number, 1);
     }
 
@@ -473,11 +612,11 @@ mod tests {
     fn test_multi_language_sdk() {
         let contract = ArtifactContract::multi_language_sdk("/tmp/test", &["rust", "python", "go"]);
         assert_eq!(contract.artifacts.len(), 3);
-        
+
         // Check Rust artifact
-        let rust = contract.artifacts.iter().find(|a| {
-            matches!(a.artifact_type, ArtifactType::Code { language } if language == "rust")
-        });
+        let rust = contract.artifacts.iter().find(
+            |a| matches!(&a.artifact_type, ArtifactType::Code { language } if language == "rust"),
+        );
         assert!(rust.is_some());
         assert!(rust.unwrap().path.to_string_lossy().contains("lib.rs"));
     }
@@ -500,7 +639,7 @@ mod tests {
         for artifact in &mut contract.artifacts {
             artifact.status = ArtifactStatus::Validated;
         }
-        
+
         let result = contract.validate();
         assert!(result.valid);
         assert_eq!(result.completion_pct, 100);

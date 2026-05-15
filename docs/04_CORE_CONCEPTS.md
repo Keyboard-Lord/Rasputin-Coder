@@ -276,12 +276,14 @@ fn validate_path_boundary(path: &Path, working_dir: &Path) -> Result<PathBuf, Fo
 
 **Purpose**: Prevent malicious or accidental file access outside the workspace.
 
+**Limit**: This is not a true sandbox. It does not create a chroot, jail, container, VM, syscall filter, OS permission boundary, network namespace, or disposable filesystem clone. Allowed commands and build scripts still run with the user's normal permissions unless a future sandbox backend is added.
+
 ### Command Execution Safety
 Shell commands are gated through multi-layer safety:
 
 | Layer | Mechanism |
 |-------|-----------|
-| **Allowlist** | Only safe commands permitted (cargo, npm, python, git, make) |
+| **Allowlist** | Only configured commands permitted (cargo, npm, python, git, make) |
 | **Destructive Detection** | rm, del, etc. require explicit confirmation |
 | **Git Safety** | push, reset, clean, etc. require confirmation |
 | **Timeouts** | All commands have execution limits |
@@ -361,7 +363,7 @@ User message → Transcript → Ollama API → Assistant reply → Transcript
 
 ### Task Flow
 ```
-task-like text or /goal → Qwen-Coder plan → PersistentChain → Spawn worker → JSONL events → Inspector updates → Final notice
+task-like text or /goal → local coder-model plan → PersistentChain → Spawn worker → JSONL events → Inspector updates → Final notice
 ```
 
 ### Validation Flow

@@ -8,13 +8,43 @@ Rasputin is evolving toward **bounded autonomy**: controlled, inspectable, valid
 
 Every limitation includes: what exists now, why it exists, what impact it has, and what constraints must be preserved when addressing it.
 
+## No True Sandbox
+
+Current state:
+- No container, jail, chroot, VM, seccomp, or OS-level sandbox.
+- Worker process isolation is not a security sandbox.
+- Repository path checks prevent normal tool escape but do not contain arbitrary code once shell commands/build scripts run.
+- Command allowlisting reduces risk but does not equal containment.
+
+Impact:
+- Malicious build scripts, tests, or dependency hooks may still execute with user permissions if allowed commands run them.
+- Local filesystem damage is reduced but not categorically prevented.
+- Security claims must be phrased as bounded execution, not sandboxing.
+
+## Disposable Workspace Limitations
+
+`disposable_workspace` is implemented only in the TUI-managed path. It creates a temporary git worktree, runs the child runtime with `repo_boundary_only`, and emits a promotion report. It does not automatically promote files back to the source workspace.
+
+- Requires a git repository and the `git_worktree` backend.
+- Direct `forge_bootstrap` runs reject `disposable_workspace`.
+- Commands and build scripts still execute with the user's permissions inside the disposable worktree.
+- Retention is opt-in with `retain_on_failure` or `retain_on_success`.
+- Promotion is report-only until an explicit promotion command is implemented.
+
+Target direction:
+- Disposable workspace copies or git worktrees
+- Optional container backend
+- Network-off execution mode
+- Per-task temp directory with explicit artifact promotion
+- OS-specific sandbox providers
+
 ## Current System Boundaries
 
 ### 1. ~~Single-Step Execution Only~~ RESOLVED
 
 **Status**: Chain execution implemented as of current sprint.
 
-**Previous State**: Each Forge task was an isolated, non-resumable execution with no structured mechanism for chaining multiple bounded steps.
+**Previous State**: Each Forge task was a separate, non-resumable worker execution with no structured mechanism for chaining multiple bounded steps.
 
 **Current State**: 
 - `ChainExecutor` provides structured multi-step task chains

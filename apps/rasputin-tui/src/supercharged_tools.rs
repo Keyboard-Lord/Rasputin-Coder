@@ -4,12 +4,11 @@
 //! Integrates all tools: file operations, batch processing, code intelligence, validation.
 
 use crate::artifact_contract::{ArtifactContract, RequiredArtifact};
-use crate::host_actions::{HostAction, HostActionResult};
-use crate::large_prompt_classifier::{ArtifactType, ArtifactStatus};
-use crate::persistence::{PersistentChain, PersistentChainStep, ChainStepStatus, ChainLifecycleStatus};
+use crate::large_prompt_classifier::ArtifactType;
+use crate::persistence::{ChainStepStatus, PersistentChainStep};
 use anyhow::Result;
 use std::path::PathBuf;
-use tracing::{info, debug, warn};
+use tracing::{debug, info, warn};
 
 /// Unified tool execution context for supercharged operations
 pub struct ToolExecutionContext {
@@ -23,12 +22,12 @@ pub struct ToolExecutionContext {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecutionMode {
-    Analysis,    // Read-only operations
-    Edit,        // File modifications
-    Fix,         // Automatic error correction
-    Batch,       // Multiple files, automated
-    Refactor,    // Large-scale code transformation
-    Generate,    // Code/file generation
+    Analysis, // Read-only operations
+    Edit,     // File modifications
+    Fix,      // Automatic error correction
+    Batch,    // Multiple files, automated
+    Refactor, // Large-scale code transformation
+    Generate, // Code/file generation
 }
 
 /// Result of a supercharged tool operation
@@ -63,8 +62,11 @@ impl SuperchargedToolExecutor {
         contract: &ArtifactContract,
     ) -> Result<SuperchargedResult> {
         let start_time = std::time::Instant::now();
-        info!("Executing artifact contract: {} artifacts", contract.artifacts.len());
-        
+        info!(
+            "Executing artifact contract: {} artifacts",
+            contract.artifacts.len()
+        );
+
         let mut result = SuperchargedResult {
             success: true,
             operation: format!("ArtifactContract:{}", contract.contract_id),
@@ -77,57 +79,82 @@ impl SuperchargedToolExecutor {
             output: String::new(),
             error: None,
         };
-        
+
         // Phase 1: Analyze existing state
         let analysis = Self::analyze_project_state(ctx, contract).await?;
-        debug!("Project analysis complete: {} existing files, {} missing", 
-            analysis.existing_files.len(), analysis.missing_files.len());
-        
+        debug!(
+            "Project analysis complete: {} existing files, {} missing",
+            analysis.existing_files.len(),
+            analysis.missing_files.len()
+        );
+
         // Phase 2: Generate missing artifacts
         for artifact in &contract.artifacts {
             if analysis.missing_files.contains(&artifact.path) {
                 match Self::generate_artifact(ctx, artifact).await {
-                    Ok(file_result) => {
-                        result.generated_files.push(artifact.path.display().to_string());
-                        result.affected_files.push(artifact.path.display().to_string());
-                        result.output.push_str(&format!("✓ Generated: {}\n", artifact.path.display()));
-                        
+                    Ok(_file_result) => {
+                        result
+                            .generated_files
+                            .push(artifact.path.display().to_string());
+                        result
+                            .affected_files
+                            .push(artifact.path.display().to_string());
+                        result
+                            .output
+                            .push_str(&format!("✓ Generated: {}\n", artifact.path.display()));
+
                         // Validate the generated file
-                        let validation = Self::validate_generated_file(ctx, &artifact.path, &artifact.artifact_type).await;
+                        let validation = Self::validate_generated_file(
+                            ctx,
+                            &artifact.path,
+                            &artifact.artifact_type,
+                        )
+                        .await;
                         result.validation_results.push(validation);
                     }
                     Err(e) => {
                         warn!("Failed to generate {}: {}", artifact.path.display(), e);
-                        result.output.push_str(&format!("✗ Failed to generate: {} - {}\n", 
-                            artifact.path.display(), e));
+                        result.output.push_str(&format!(
+                            "✗ Failed to generate: {} - {}\n",
+                            artifact.path.display(),
+                            e
+                        ));
                         result.success = false;
                     }
                 }
             } else {
-                result.output.push_str(&format!("→ Exists: {}\n", artifact.path.display()));
+                result
+                    .output
+                    .push_str(&format!("→ Exists: {}\n", artifact.path.display()));
             }
         }
-        
+
         // Phase 3: Post-generation validation
         let final_validation = Self::validate_contract_completion(ctx, contract).await?;
         if !final_validation.valid {
             result.success = false;
-            result.error = Some(format!("Validation failed: {:?}", final_validation.violations));
+            result.error = Some(format!(
+                "Validation failed: {:?}",
+                final_validation.violations
+            ));
         }
-        
+
         result.execution_time_ms = start_time.elapsed().as_millis() as u64;
-        info!("Artifact contract execution complete: {}ms", result.execution_time_ms);
-        
+        info!(
+            "Artifact contract execution complete: {}ms",
+            result.execution_time_ms
+        );
+
         Ok(result)
     }
-    
+
     /// Execute batch operations efficiently
     pub async fn execute_batch_operation(
         ctx: &ToolExecutionContext,
         operation: BatchOperation,
     ) -> Result<SuperchargedResult> {
         let start_time = std::time::Instant::now();
-        
+
         let mut result = SuperchargedResult {
             success: true,
             operation: format!("Batch:{:?}", operation.operation_type),
@@ -140,7 +167,7 @@ impl SuperchargedToolExecutor {
             output: String::new(),
             error: None,
         };
-        
+
         match operation.operation_type {
             BatchOperationType::ReadMultiple => {
                 // Batch read files using forge-runtime batch tools
@@ -178,18 +205,18 @@ impl SuperchargedToolExecutor {
                 result.output = format!("Synced directory: {}", ctx.repo_path.display());
             }
         }
-        
+
         result.execution_time_ms = start_time.elapsed().as_millis() as u64;
         Ok(result)
     }
-    
+
     /// Execute code intelligence operations
     pub async fn execute_code_intelligence(
-        ctx: &ToolExecutionContext,
+        _ctx: &ToolExecutionContext,
         operation: CodeIntelligenceOperation,
     ) -> Result<SuperchargedResult> {
         let start_time = std::time::Instant::now();
-        
+
         let mut result = SuperchargedResult {
             success: true,
             operation: format!("CodeIntel:{:?}", operation),
@@ -202,7 +229,7 @@ impl SuperchargedToolExecutor {
             output: String::new(),
             error: None,
         };
-        
+
         match operation {
             CodeIntelligenceOperation::AnalyzeDependencies => {
                 result.output = "Dependency analysis complete".to_string();
@@ -224,11 +251,11 @@ impl SuperchargedToolExecutor {
                 result.modified_files.push(target);
             }
         }
-        
+
         result.execution_time_ms = start_time.elapsed().as_millis() as u64;
         Ok(result)
     }
-    
+
     /// Convert artifact contract to execution steps
     pub fn contract_to_execution_steps(
         contract: &ArtifactContract,
@@ -236,17 +263,18 @@ impl SuperchargedToolExecutor {
         include_validation: bool,
     ) -> Vec<ExecutionStep> {
         let mut steps = vec![];
-        
+
         // Phase 0: Planning/Inventory
         if include_planning {
             steps.push(ExecutionStep {
                 id: "step-0".to_string(),
-                description: "Phase 0: Inventory repository and validate contract requirements".to_string(),
+                description: "Phase 0: Inventory repository and validate contract requirements"
+                    .to_string(),
                 step_type: ExecutionStepType::Planning,
                 target_artifact: None,
             });
         }
-        
+
         // Phase 1-N: Generate each artifact
         for artifact in &contract.artifacts {
             steps.push(ExecutionStep {
@@ -265,7 +293,11 @@ impl SuperchargedToolExecutor {
                     format!(
                         "Generate {} [{}] - {}",
                         type_icon,
-                        artifact.path.file_name().unwrap_or_default().to_string_lossy(),
+                        artifact
+                            .path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy(),
                         artifact.purpose
                     )
                 },
@@ -273,7 +305,7 @@ impl SuperchargedToolExecutor {
                 target_artifact: Some(artifact.path.clone()),
             });
         }
-        
+
         // Phase Z: Final validation
         if include_validation {
             steps.push(ExecutionStep {
@@ -283,10 +315,10 @@ impl SuperchargedToolExecutor {
                 target_artifact: None,
             });
         }
-        
+
         steps
     }
-    
+
     // Internal helper methods
     async fn analyze_project_state(
         ctx: &ToolExecutionContext,
@@ -294,7 +326,7 @@ impl SuperchargedToolExecutor {
     ) -> Result<ProjectAnalysis> {
         let mut existing = vec![];
         let mut missing = vec![];
-        
+
         for artifact in &contract.artifacts {
             let full_path = ctx.repo_path.join(&artifact.path);
             if full_path.exists() {
@@ -303,38 +335,39 @@ impl SuperchargedToolExecutor {
                 missing.push(artifact.path.clone());
             }
         }
-        
+
         Ok(ProjectAnalysis {
             existing_files: existing,
             missing_files: missing,
         })
     }
-    
+
     async fn generate_artifact(
         ctx: &ToolExecutionContext,
         artifact: &RequiredArtifact,
     ) -> Result<GeneratedFileResult> {
         let full_path = ctx.repo_path.join(&artifact.path);
-        
+
         // Ensure parent directory exists
         if let Some(parent) = full_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        
+
         // Generate content based on artifact type
-        let content = Self::generate_content_for_type(&artifact.artifact_type, &artifact.purpose).await?;
-        
+        let content =
+            Self::generate_content_for_type(&artifact.artifact_type, &artifact.purpose).await?;
+
         // Write the file
         tokio::fs::write(&full_path, content).await?;
-        
+
         info!("Generated artifact: {}", full_path.display());
-        
+
         Ok(GeneratedFileResult {
             path: full_path,
             success: true,
         })
     }
-    
+
     async fn generate_content_for_type(
         artifact_type: &ArtifactType,
         purpose: &str,
@@ -342,29 +375,38 @@ impl SuperchargedToolExecutor {
         // This would integrate with the LLM to generate appropriate content
         // For now, return a template based on type
         let template = match artifact_type {
-            ArtifactType::Markdown => format!("# {}\n\nGenerated content for: {}\n", purpose, purpose),
-            ArtifactType::Code { language } => format!("// {} file: {}\n// Generated by Rasputin\n\n", language, purpose),
-            ArtifactType::Config => format!("# {} Configuration\n# Generated by Rasputin\n", purpose),
+            ArtifactType::Markdown => {
+                format!("# {}\n\nGenerated content for: {}\n", purpose, purpose)
+            }
+            ArtifactType::Code { language } => format!(
+                "// {} file: {}\n// Generated by Rasputin\n\n",
+                language, purpose
+            ),
+            ArtifactType::Config => {
+                format!("# {} Configuration\n# Generated by Rasputin\n", purpose)
+            }
             ArtifactType::Data => format!("{{\n  \"purpose\": \"{}\"\n}}\n", purpose),
             ArtifactType::Test => format!("// Test file: {}\n// Generated by Rasputin\n", purpose),
-            ArtifactType::Script => format!("#!/bin/bash\n# {}\n# Generated by Rasputin\n", purpose),
+            ArtifactType::Script => {
+                format!("#!/bin/bash\n# {}\n# Generated by Rasputin\n", purpose)
+            }
             ArtifactType::Documentation => format!("// Documentation: {}\n", purpose),
             ArtifactType::Other(ext) => format!("// {} file: {}\n", ext, purpose),
         };
-        
+
         Ok(template)
     }
-    
+
     async fn validate_generated_file(
         ctx: &ToolExecutionContext,
         path: &PathBuf,
         artifact_type: &ArtifactType,
     ) -> ValidationResult {
         let full_path = ctx.repo_path.join(path);
-        
+
         let mut issues = vec![];
         let mut passed = true;
-        
+
         // Check file exists and is non-empty
         match tokio::fs::metadata(&full_path).await {
             Ok(metadata) => {
@@ -378,7 +420,7 @@ impl SuperchargedToolExecutor {
                 passed = false;
             }
         }
-        
+
         // Type-specific validation
         match artifact_type {
             ArtifactType::Markdown => {
@@ -395,16 +437,16 @@ impl SuperchargedToolExecutor {
             }
             _ => {}
         }
-        
+
         ValidationResult {
             file: path.display().to_string(),
             passed,
             issues,
         }
     }
-    
+
     async fn validate_contract_completion(
-        ctx: &ToolExecutionContext,
+        _ctx: &ToolExecutionContext,
         contract: &ArtifactContract,
     ) -> Result<crate::artifact_contract::ContractValidationResult> {
         // Re-run contract validation
@@ -474,8 +516,10 @@ pub enum ExecutionStepType {
 
 /// Convert execution steps to persistent chain steps
 pub fn execution_steps_to_chain_steps(steps: Vec<ExecutionStep>) -> Vec<PersistentChainStep> {
-    steps.into_iter().enumerate().map(|(i, step)| {
-        PersistentChainStep {
+    steps
+        .into_iter()
+        .enumerate()
+        .map(|(_i, step)| PersistentChainStep {
             id: step.id,
             description: step.description,
             status: ChainStepStatus::Pending,
@@ -495,8 +539,8 @@ pub fn execution_steps_to_chain_steps(steps: Vec<ExecutionStep>) -> Vec<Persiste
             completed_at: None,
             error_message: None,
             replay_record: None,
-        }
-    }).collect()
+        })
+        .collect()
 }
 
 /// Extension trait for ArtifactContract to use supercharged execution
@@ -509,7 +553,7 @@ impl SuperchargeArtifactContract for ArtifactContract {
     fn to_supercharged_steps(&self) -> Vec<ExecutionStep> {
         SuperchargedToolExecutor::contract_to_execution_steps(self, true, true)
     }
-    
+
     fn get_tool_context(&self, repo_path: PathBuf) -> ToolExecutionContext {
         ToolExecutionContext {
             repo_path: repo_path.clone(),
@@ -525,37 +569,49 @@ impl SuperchargeArtifactContract for ArtifactContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_contract_to_execution_steps() {
         let contract = ArtifactContract::canonical_15_docs("/tmp/test");
         let steps = SuperchargedToolExecutor::contract_to_execution_steps(&contract, true, true);
-        
+
         // Should have: planning + 15 artifacts + validation = 17 steps
         assert_eq!(steps.len(), 17);
-        
+
         // First step should be planning
         assert!(matches!(steps[0].step_type, ExecutionStepType::Planning));
-        
+
         // Last step should be validation
-        assert!(matches!(steps.last().unwrap().step_type, ExecutionStepType::Validation));
-        
+        assert!(matches!(
+            steps.last().unwrap().step_type,
+            ExecutionStepType::Validation
+        ));
+
         // Middle steps should be artifact generation
-        assert!(matches!(steps[1].step_type, ExecutionStepType::GenerateArtifact(_)));
+        assert!(matches!(
+            steps[1].step_type,
+            ExecutionStepType::GenerateArtifact(_)
+        ));
     }
-    
+
     #[tokio::test]
     async fn test_generate_content_for_types() {
         let markdown = SuperchargedToolExecutor::generate_content_for_type(
             &ArtifactType::Markdown,
-            "Test Document"
-        ).await.unwrap();
+            "Test Document",
+        )
+        .await
+        .unwrap();
         assert!(markdown.contains("# Test Document"));
-        
+
         let rust_code = SuperchargedToolExecutor::generate_content_for_type(
-            &ArtifactType::Code { language: "rust".to_string() },
-            "Main Library"
-        ).await.unwrap();
+            &ArtifactType::Code {
+                language: "rust".to_string(),
+            },
+            "Main Library",
+        )
+        .await
+        .unwrap();
         assert!(rust_code.contains("rust"));
         assert!(rust_code.contains("Main Library"));
     }

@@ -18,10 +18,10 @@ Location: `<workspace>/.forge/config.yaml`
 Format:
 ```yaml
 planner:
-  model: qwen2.5-coder:14b
+  model: huihui_ai/deepseek-r1-abliterated:14b
 
 ollama:
-  model: qwen2.5-coder:14b
+  model: huihui_ai/deepseek-r1-abliterated:14b
 ```
 
 Both `planner.model` and `ollama.model` are recognized. The `planner:` section is preferred.
@@ -33,7 +33,7 @@ Location: `<workspace>/rasputin.json`
 Format:
 ```json
 {
-  "ollama_model": "qwen2.5-coder:14b"
+  "ollama_model": "huihui_ai/deepseek-r1-abliterated:14b"
 }
 ```
 
@@ -41,7 +41,7 @@ Format:
 
 | Variable | Description | Default | Example |
 |----------|-------------|---------|---------|
-| `FORGE_PLANNER_MODEL` | Model tag for planner | (from config) | `qwen2.5-coder:14b` |
+| `FORGE_PLANNER_MODEL` | Model tag for planner | (from config) | `huihui_ai/deepseek-r1-abliterated:14b` |
 | `FORGE_PLANNER_ENDPOINT` | Ollama API URL (loopback-only) | `http://127.0.0.1:11434` | `http://localhost:11434` |
 | `FORGE_PLANNER_TEMPERATURE` | Sampling temperature | `0.0` | `0.1` |
 | `FORGE_PLANNER_SEED` | Random seed | `42` | `12345` |
@@ -66,7 +66,8 @@ Format:
 | `mode` | `ExecutionMode` | `Edit` | Execution mode |
 | `planner_type` | `String` | `"http"` | Planner implementation |
 | `planner_endpoint` | `String` | `http://127.0.0.1:11434` | Ollama API endpoint |
-| `planner_model` | `String` | `qwen2.5-coder:14b` | Model tag |
+| `planner_model` | `String` | `huihui_ai/deepseek-r1-abliterated:14b` | Model tag |
+| `sandbox_mode` | `SandboxMode` | `repo_boundary_only` | Current execution containment level; not a true sandbox |
 | `planner_timeout_seconds` | `u32` | `30` | Planner request timeout |
 | `planner_temperature` | `f32` | `0.0` | Temperature (clamped 0.0-0.1) |
 | `planner_seed` | `u64` | `42` | Random seed |
@@ -80,7 +81,9 @@ Format:
 2. `.forge/config.yaml` → `planner.model`
 3. `.forge/config.yaml` → `ollama.model`
 4. `rasputin.json` → `ollama_model`
-5. Default: `qwen2.5-coder:14b`
+5. Default: `huihui_ai/deepseek-r1-abliterated:14b`
+
+**Backward Compatibility**: Legacy Qwen models (`qwen2.5-coder:14b` and variants) remain fully supported. Existing configurations will continue to work.
 
 ### Model Normalization
 
@@ -98,7 +101,7 @@ Auto-enabled for large models (14B+) to reduce prompt size. Can be forced via `F
 1. Install Ollama: https://ollama.com
 2. Pull recommended model:
    ```bash
-   ollama pull qwen2.5-coder:14b
+   ollama pull huihui_ai/deepseek-r1-abliterated:14b
    ```
 3. Start Ollama server:
    ```bash
@@ -109,9 +112,10 @@ Auto-enabled for large models (14B+) to reduce prompt size. Can be forced via `F
 
 | Model | Size | Use Case |
 |-------|------|----------|
-| `qwen2.5-coder:14b` | 14B parameters | Balanced quality and speed |
-| `qwen2.5-coder:14b-q4KM` | Quantized | Reduced memory usage |
-| `qwen2.5-coder:7b` | 7B parameters | Faster, lower quality |
+| `huihui_ai/deepseek-r1-abliterated:14b` | 14B parameters | Primary recommended model |
+| `qwen2.5-coder:14b` | 14B parameters | Legacy backward compatibility |
+| `qwen2.5-coder:14b-q4KM` | Quantized | Reduced memory usage (legacy) |
+| `qwen2.5-coder:7b` | 7B parameters | Faster, lower quality (legacy) |
 
 Smaller models (3B) may hallucinate frequently and are not recommended for serious use.
 
@@ -166,19 +170,61 @@ Current policy (not user-configurable):
 ### Full `.forge/config.yaml`
 ```yaml
 planner:
-  model: qwen2.5-coder:14b-q4KM
+  model: huihui_ai/deepseek-r1-abliterated:14b
   temperature: 0.0
   seed: 42
 
 ollama:
-  model: qwen2.5-coder:14b-q4KM
+  model: huihui_ai/deepseek-r1-abliterated:14b
   endpoint: http://127.0.0.1:11434
+
+execution:
+  sandbox_mode: repo_boundary_only
 ```
+
+Supported `execution.sandbox_mode` values:
+- `none`: no repository boundary mode label; still subject to runtime tool policy
+- `repo_boundary_only`: current default; repo path checks plus bounded worker execution
+- `disposable_workspace`: TUI-managed git worktree execution; source workspace is not mutated and promotion is report-only
+- `external_container`: roadmap placeholder; rejected until implemented
+
+Optional disposable workspace settings:
+```yaml
+execution:
+  sandbox_mode: disposable_workspace
+  disposable_workspace:
+    backend: git_worktree
+    retain_on_failure: false
+    retain_on_success: false
+    require_explicit_promotion: true
+```
+
+Current implementation scope:
+- `git_worktree` backend only
+- non-git recursive-copy backend is not implemented
+- direct `forge_bootstrap` runs still reject `disposable_workspace`; the TUI wrapper creates the worktree and runs the worker with `repo_boundary_only` inside it
+- `retain_on_failure: true` preserves a failed disposable worktree and reports the retained path; default `false` removes it
+- `retain_on_success: true` preserves a successful disposable worktree and reports the retained path; default `false` removes it
+- promotion is an explicit report containing changed files and diff; automatic source workspace mutation is not implemented
+- promotion reports include `execution_environment`, `changes_made`, `validation_results`, `source_head_before`, `source_head_after`, and `promotion_status`
+- source HEAD lookup, diff generation, promotion report generation, and cleanup failures fail closed instead of silently succeeding
+- `disposable_workspace` is workspace isolation only. It is not OS-level containment, and commands still run with the user's permissions inside the disposable worktree.
+
+Disposable workspace runtime events:
+- `disposable_workspace_created`
+- `disposable_workspace_execution_started`
+- `disposable_workspace_validation_passed`
+- `disposable_workspace_validation_failed`
+- `disposable_workspace_promotion_report_created`
+- `disposable_workspace_promotion_pending`
+- `disposable_workspace_cleaned`
+- `disposable_workspace_retained`
+- `disposable_workspace_cleanup_failed`
 
 ### Development Override
 ```bash
-# Use smaller model for testing
-FORGE_PLANNER_MODEL=qwen2.5-coder:7b ./rasputin ./my-project
+# Use alternative model for testing
+FORGE_PLANNER_MODEL=huihui_ai/deepseek-r1-abliterated:14b ./rasputin ./my-project
 
 # JSONL output for scripting
 FORGE_OUTPUT_MODE=jsonl ./rasputin ./my-project

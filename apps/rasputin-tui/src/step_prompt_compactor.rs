@@ -4,8 +4,8 @@
 //! Ensures each step stays within model context limits and executes quickly.
 
 use crate::artifact_contract::RequiredArtifact;
-use crate::large_prompt_classifier::ArtifactType;
 use crate::chain_working_memory::ChainWorkingMemory;
+use crate::large_prompt_classifier::ArtifactType;
 use std::collections::HashSet;
 
 /// Compacts prompts to be step-focused and bounded
@@ -16,7 +16,7 @@ impl StepPromptCompactor {
     pub const MAX_STEP_TOKENS: usize = 4000;
     /// Target tokens for optimal execution
     pub const TARGET_STEP_TOKENS: usize = 2500;
-    
+
     /// Compact a full prompt into a step-sized prompt
     pub fn compact_for_step(
         original_prompt: &str,
@@ -26,28 +26,25 @@ impl StepPromptCompactor {
         working_memory: Option<&ChainWorkingMemory>,
     ) -> String {
         // Build compact context
-        let context = Self::build_step_context(
-            artifact, 
-            step_number, 
-            total_steps,
-            working_memory
-        );
-        
+        let context = Self::build_step_context(artifact, step_number, total_steps, working_memory);
+
         // Get focused instruction
         let instruction = Self::build_step_instruction(artifact);
-        
+
         // Get constraints
         let constraints = Self::build_step_constraints(artifact);
-        
+
+        let source_summary = Self::source_prompt_summary(original_prompt);
+
         // Combine
         let compacted = format!(
-            "{context}\n\n{instruction}\n\n{constraints}"
+            "SOURCE REQUEST: {source_summary}\n\n{context}\n\n{instruction}\n\n{constraints}"
         );
-        
+
         // Verify size and truncate if needed
         Self::ensure_size_limit(compacted, Self::MAX_STEP_TOKENS)
     }
-    
+
     /// Build context section for a step
     fn build_step_context(
         artifact: &RequiredArtifact,
@@ -55,14 +52,17 @@ impl StepPromptCompactor {
         total_steps: usize,
         working_memory: Option<&ChainWorkingMemory>,
     ) -> String {
-        let mut parts = vec![
-            format!("STEP {}/{}: {}", step_number, total_steps, 
-                artifact.path.file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_default()
-            ),
-        ];
-        
+        let mut parts = vec![format!(
+            "STEP {}/{}: {}",
+            step_number,
+            total_steps,
+            artifact
+                .path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default()
+        )];
+
         // Add working memory context if available
         if let Some(memory) = working_memory {
             let relevant_context = memory.get_generation_context(&artifact.path.to_string_lossy());
@@ -73,10 +73,10 @@ impl StepPromptCompactor {
                 ));
             }
         }
-        
+
         parts.join("\n\n")
     }
-    
+
     /// Build focused instruction for a step
     fn build_step_instruction(artifact: &RequiredArtifact) -> String {
         let type_instruction = match &artifact.artifact_type {
@@ -97,8 +97,7 @@ impl StepPromptCompactor {
                     FOCUS: Create ONLY this file. Match existing code style.\n\
                     Follow project conventions.\n\
                     Do NOT generate other files.",
-                    language,
-                    artifact.purpose
+                    language, artifact.purpose
                 )
             }
             ArtifactType::Config => {
@@ -126,7 +125,7 @@ impl StepPromptCompactor {
                 )
             }
         };
-        
+
         format!(
             "INSTRUCTION:\n{}\n\n\
             OUTPUT: Write to {}",
@@ -134,7 +133,7 @@ impl StepPromptCompactor {
             artifact.path.display()
         )
     }
-    
+
     /// Build constraints for a step
     fn build_step_constraints(artifact: &RequiredArtifact) -> String {
         let base_constraints = r#"CONSTRAINTS:
@@ -144,7 +143,7 @@ impl StepPromptCompactor {
 - Do NOT generate multiple files
 - Base content on actual repository analysis
 - Follow existing project conventions"#;
-        
+
         let type_specific = match &artifact.artifact_type {
             ArtifactType::Markdown => {
                 "\n- Start with proper markdown heading\n- Include relevant code references\n- Link to other docs when appropriate".to_string()
@@ -157,14 +156,15 @@ impl StepPromptCompactor {
             }
             _ => "".to_string(),
         };
-        
+
         format!("{}{}", base_constraints, type_specific)
     }
-    
+
     /// Compact a planning phase prompt
     pub fn compact_planning_prompt(original_prompt: &str, artifact_count: usize) -> String {
         format!(
             "PHASE 0: REPOSITORY INVENTORY (Step 1 of {} total steps)\n\n\
+            Source request: {}\n\n\
             Analyze repository structure to guide {} artifact generations.\n\n\
             Focus:\n\
             1. Top-level directories\n\
@@ -173,10 +173,27 @@ impl StepPromptCompactor {
             4. Existing patterns\n\n\
             Be concise - store key findings in working memory for later steps.",
             artifact_count + 2, // + planning + validation
+            Self::source_prompt_summary(original_prompt),
             artifact_count
         )
     }
-    
+
+    fn source_prompt_summary(original_prompt: &str) -> String {
+        let summary = original_prompt
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if summary.chars().count() > 80 {
+            let mut truncated: String = summary.chars().take(77).collect();
+            truncated.push_str("...");
+            truncated
+        } else if summary.is_empty() {
+            "No source request provided".to_string()
+        } else {
+            summary
+        }
+    }
+
     /// Compact a validation phase prompt
     pub fn compact_validation_prompt(contract_summary: &str, artifact_count: usize) -> String {
         format!(
@@ -188,30 +205,27 @@ impl StepPromptCompactor {
             3. Content is repo-grounded\n\
             4. No source code was modified\n\n\
             Report completion status.",
-            artifact_count,
-            contract_summary
+            artifact_count, contract_summary
         )
     }
-    
+
     /// Estimate token count for text
     pub fn estimate_tokens(text: &str) -> usize {
         // Rough approximation: ~4 characters per token
         // This is a conservative estimate
         (text.len() / 4).max(1)
     }
-    
+
     /// Truncate context to stay within token budget
     fn truncate_context(context: &str, max_tokens: usize) -> String {
         let max_chars = max_tokens * 4;
-        
+
         if context.len() <= max_chars {
             context.to_string()
         } else {
             // Find a good break point
-            let break_point = context[..max_chars]
-                .rfind("\n\n")
-                .unwrap_or(max_chars);
-            
+            let break_point = context[..max_chars].rfind("\n\n").unwrap_or(max_chars);
+
             format!(
                 "{}\n\n[... {} more tokens of context ...]",
                 &context[..break_point],
@@ -219,11 +233,11 @@ impl StepPromptCompactor {
             )
         }
     }
-    
+
     /// Ensure prompt stays within size limit
     fn ensure_size_limit(prompt: String, max_tokens: usize) -> String {
         let current_tokens = Self::estimate_tokens(&prompt);
-        
+
         if current_tokens <= max_tokens {
             prompt
         } else {
@@ -240,13 +254,13 @@ impl StepPromptCompactor {
             }
         }
     }
-    
+
     /// Remove redundant content from prompt
     pub fn deduplicate(prompt: &str) -> String {
         let lines: Vec<&str> = prompt.lines().collect();
         let mut seen = HashSet::new();
         let mut result = vec![];
-        
+
         for line in lines {
             let trimmed = line.trim();
             if trimmed.is_empty() {
@@ -256,14 +270,13 @@ impl StepPromptCompactor {
                 result.push(line);
             }
         }
-        
+
         result.join("\n")
     }
-    
+
     /// Compress by removing filler words
     pub fn compress_filler_words(text: &str) -> String {
-        text
-            .replace("Please ", "")
+        text.replace("Please ", "")
             .replace("Please, ", "")
             .replace("I would like you to ", "")
             .replace("I want you to ", "")
@@ -273,28 +286,30 @@ impl StepPromptCompactor {
             .replace("It would be great if you could ", "")
             .replace("kindly ", "")
     }
-    
+
     /// Get token count breakdown for a prompt
     pub fn analyze_token_usage(prompt: &str) -> TokenUsageAnalysis {
         let total_tokens = Self::estimate_tokens(prompt);
-        
+
         let lines: Vec<&str> = prompt.lines().collect();
-        let context_lines: Vec<&str> = lines.iter()
+        let context_lines: Vec<&str> = lines
+            .iter()
             .filter(|l| l.starts_with("REPO CONTEXT:") || l.starts_with("PREVIOUSLY:"))
             .copied()
             .collect();
-        let instruction_lines: Vec<&str> = lines.iter()
+        let instruction_lines: Vec<&str> = lines
+            .iter()
             .filter(|l| l.starts_with("TASK:") || l.starts_with("INSTRUCTION:"))
             .copied()
             .collect();
-        
+
         TokenUsageAnalysis {
             total_tokens,
             context_tokens: Self::estimate_tokens(&context_lines.join("\n")),
             instruction_tokens: Self::estimate_tokens(&instruction_lines.join("\n")),
             overhead_tokens: total_tokens.saturating_sub(
-                Self::estimate_tokens(&context_lines.join("\n")) +
-                Self::estimate_tokens(&instruction_lines.join("\n"))
+                Self::estimate_tokens(&context_lines.join("\n"))
+                    + Self::estimate_tokens(&instruction_lines.join("\n")),
             ),
             within_limit: total_tokens <= Self::MAX_STEP_TOKENS,
         }
@@ -319,7 +334,11 @@ impl std::fmt::Display for TokenUsageAnalysis {
             self.context_tokens,
             self.instruction_tokens,
             self.overhead_tokens,
-            if self.within_limit { "✓ within limit" } else { "✗ exceeds limit" }
+            if self.within_limit {
+                "✓ within limit"
+            } else {
+                "✗ exceeds limit"
+            }
         )
     }
 }
@@ -328,7 +347,7 @@ impl std::fmt::Display for TokenUsageAnalysis {
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    
+
     #[test]
     fn test_compact_for_step() {
         let artifact = RequiredArtifact {
@@ -340,29 +359,28 @@ mod tests {
             dependencies: vec![],
             estimated_effort: crate::artifact_contract::EffortLevel::Medium,
         };
-        
+
         let original = r#"
 This is a very long prompt that goes on and on about many different things.
 It contains lots of context and instructions that could be much more concise.
 We want to compact this down to just the essential information for the step.
+It also repeats broad project context, unrelated implementation constraints,
+historical notes, and extra explanatory material that should not be carried
+into a focused single-artifact generation prompt.
+The compactor should preserve the target artifact, the step number, and the
+actionable constraints while discarding this general background text.
 "#;
-        
-        let compacted = StepPromptCompactor::compact_for_step(
-            original, 
-            &artifact, 
-            1, 
-            15, 
-            None
-        );
-        
+
+        let compacted = StepPromptCompactor::compact_for_step(original, &artifact, 1, 15, None);
+
         // Should be significantly smaller
         assert!(compacted.len() < original.len() + 200); // +200 for added structure
-        
+
         // Should contain step info
         assert!(compacted.contains("STEP 1/15"));
         assert!(compacted.contains("README.md"));
     }
-    
+
     #[test]
     fn test_estimate_tokens() {
         let text = "This is a test string with some content.";
@@ -370,16 +388,16 @@ We want to compact this down to just the essential information for the step.
         // Roughly 38 chars / 4 = ~10 tokens
         assert!(tokens > 0 && tokens < 20);
     }
-    
+
     #[test]
     fn test_truncate_context() {
         let long_context = "A".repeat(5000);
         let truncated = StepPromptCompactor::truncate_context(&long_context, 100);
-        
+
         assert!(truncated.len() < 500);
         assert!(truncated.contains("[..."));
     }
-    
+
     #[test]
     fn test_analyze_token_usage() {
         let prompt = r#"REPO CONTEXT:
@@ -389,18 +407,18 @@ INSTRUCTION:
 Do something
 
 More content"#;
-        
+
         let analysis = StepPromptCompactor::analyze_token_usage(prompt);
         assert!(analysis.total_tokens > 0);
         assert!(analysis.context_tokens > 0);
         assert!(analysis.instruction_tokens > 0);
     }
-    
+
     #[test]
     fn test_compress_filler_words() {
         let text = "Please generate this file. I would like you to make it good.";
         let compressed = StepPromptCompactor::compress_filler_words(text);
-        
+
         assert!(!compressed.contains("Please"));
         assert!(!compressed.contains("I would like you to"));
         assert!(compressed.contains("generate"));

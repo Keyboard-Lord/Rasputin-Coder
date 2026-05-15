@@ -46,7 +46,7 @@ sequenceDiagram
 
     User->>TUI: task-like plain text or /goal
     TUI->>TUI: Classify task-like input
-    TUI->>Ollama: Qwen-Coder goal-plan request
+    TUI->>Ollama: Local coder-model goal-plan request
     Ollama-->>TUI: Plan JSON
     TUI->>TUI: Materialize chain and queue confirmation/resume
     TUI->>Worker: Spawn forge_bootstrap
@@ -142,7 +142,7 @@ User: /stop or Ctrl+C
 ```mermaid
 flowchart TB
     subgraph Create["Chain Creation"]
-        A[User: task-like text or /goal] --> B[Qwen-Coder plan]
+        A[User: task-like text or /goal] --> B[Local coder-model plan]
         B --> C[Create planned chain]
         C --> E[Set chain active]
         E --> F[Persist state]
@@ -318,8 +318,8 @@ Freeform requests are classified:
 ```
 task-like plain text or /goal <freeform request>
   └── AutonomousLoopController::is_task_like_plain_text()
-      └── QwenGoalPlanner::build_messages()
-      └── QwenGoalPlanner::parse_response()
+      └── GoalPlanner::build_messages()
+      └── GoalPlanner::parse_response()
       └── GoalConfirm materializes PersistentChain
       └── Pending /chain resume active
 
@@ -349,7 +349,7 @@ High-risk task detected
 ```mermaid
 flowchart TD
     A[submit_active_input] --> B{Parse slash command?}
-    B -->|/goal| C[Qwen goal planner]
+    B -->|/goal| C[Coder model goal planner]
     B -->|/task| D[Manual Forge task]
     B -->|/validate| E[Run TUI validation]
     B -->|/open, /model, etc| F[Handle command]

@@ -539,17 +539,17 @@ enum StageStatus {
 
 ```yaml
 planner:
-  model: qwen2.5-coder:14b
+  model: huihui_ai/deepseek-r1-abliterated:14b
 
 ollama:
-  model: qwen2.5-coder:14b
+  model: huihui_ai/deepseek-r1-abliterated:14b
 ```
 
 ### Config Schema (JSON - rasputin.json)
 
 ```json
 {
-  "ollama_model": "qwen2.5-coder:14b"
+  "ollama_model": "huihui_ai/deepseek-r1-abliterated:14b"
 }
 ```
 

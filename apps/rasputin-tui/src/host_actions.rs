@@ -243,7 +243,7 @@ fn attach_project(path: PathBuf) -> Result<HostActionResult> {
     let resolved = canonical_or_normalized(&path);
     Ok(success_result(
         "AttachProject",
-        format!("Project attached: {}", resolved.display()),
+        format!("Attached project: {}", resolved.display()),
         vec![resolved.display().to_string()],
         vec![format!("Validated project root {}", resolved.display())],
     ))
@@ -420,11 +420,14 @@ fn apply_patch(
     let occurrences = before.matches(find).count();
     if occurrences == 0 {
         // RELAXED: Create file if find not found (write mode)
-        tracing::info!("old_text not found in {}, creating new content", resolved.display());
+        tracing::info!(
+            "old_text not found in {}, creating new content",
+            resolved.display()
+        );
         let after = replace.to_string();
         fs::write(&resolved, &after)
             .with_context(|| format!("Failed to write {}", resolved.display()))?;
-        
+
         let mutation = FileMutation {
             path: resolved.display().to_string(),
             before: None,
@@ -432,12 +435,15 @@ fn apply_patch(
             after: after.clone(),
             after_hash: format!("{:x}", md5::compute(&after)),
         };
-        
+
         let mut result = success_result(
             "ApplyPatch",
             format!("Created file: {}", resolved.display()),
             vec![resolved.display().to_string()],
-            vec![format!("Created {} (find text not found, using replace as new content)", resolved.display())],
+            vec![format!(
+                "Created {} (find text not found, using replace as new content)",
+                resolved.display()
+            )],
         );
         result.file_mutations = vec![mutation];
         return Ok(result);
@@ -635,6 +641,7 @@ fn success_result(
     affected_paths: Vec<String>,
     logs: Vec<String>,
 ) -> HostActionResult {
+    let output = summary.clone();
     HostActionResult {
         success: true,
         intent,
@@ -644,7 +651,7 @@ fn success_result(
         diff: None,
         logs,
         state_updates: None,
-        output: None,
+        output: Some(output),
         exit_code: None,
         file_mutations: vec![],
     }
@@ -866,7 +873,9 @@ mod tests {
         let mut persistence = PersistentState::new();
 
         let result = execute(
-            HostAction::AttachProject { path: project_path.clone() },
+            HostAction::AttachProject {
+                path: project_path.clone(),
+            },
             &mut persistence,
         );
 

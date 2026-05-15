@@ -1,7 +1,7 @@
 //! Model Planner - Real Model-Backed Planner
 //!
 //! Implements a planner that calls a private external model endpoint.
-//! Uses PlannerBackend trait for isolation.
+//! Uses PlannerBackend trait for transport separation.
 
 use crate::planner::adapter::PlannerAdapter;
 use crate::planner::state_view::StateView;
@@ -10,7 +10,7 @@ use crate::types::{ForgeError, PlannerOutput};
 use std::time::{Duration, Instant};
 
 /// Backend interface for model communication
-/// Isolated from planner semantics - just transport
+/// Separated from planner semantics - just transport
 pub trait PlannerBackend: Send + Sync {
     /// Send prompt to model backend and return raw response
     fn infer(&self, prompt: &str) -> Result<String, ForgeError>;

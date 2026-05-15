@@ -1484,9 +1484,13 @@ impl ArtifactCrudOperation {
     pub fn description(self) -> &'static str {
         match self {
             Self::CreateMissing => "write the required artifact when it does not exist yet",
-            Self::UpdateExisting => "edit an existing required artifact without changing the filename contract",
+            Self::UpdateExisting => {
+                "edit an existing required artifact without changing the filename contract"
+            }
             Self::ReplaceEmpty => "replace an empty required artifact with substantive content",
-            Self::ListRequired => "inventory the required artifact set and current filesystem state",
+            Self::ListRequired => {
+                "inventory the required artifact set and current filesystem state"
+            }
             Self::CheckCompleteness => "validate that the full artifact contract is satisfied",
         }
     }
@@ -1516,7 +1520,9 @@ impl ArtifactCompletionContract {
             && self
                 .actual_output_count
                 .map(|count| count == self.required_deliverable_count())
-                .unwrap_or_else(|| self.created_filenames.len() == self.required_deliverable_count())
+                .unwrap_or_else(|| {
+                    self.created_filenames.len() == self.required_deliverable_count()
+                })
     }
 
     pub fn has_requirements(&self) -> bool {
@@ -2370,6 +2376,12 @@ pub struct RepoContext {
     pub display_path: String,
     pub branch: Option<String>,
     pub git_detected: bool,
+    pub sandbox_mode: Option<String>,
+    pub sandbox_source: Option<String>,
+    pub disposable_workspace_backend: Option<String>,
+    pub disposable_workspace_retain_on_failure: Option<bool>,
+    pub disposable_workspace_retain_on_success: Option<bool>,
+    pub disposable_workspace_require_explicit_promotion: Option<bool>,
 }
 
 impl Default for RepoContext {
@@ -2380,6 +2392,12 @@ impl Default for RepoContext {
             display_path: "~".to_string(),
             branch: None,
             git_detected: false,
+            sandbox_mode: None,
+            sandbox_source: None,
+            disposable_workspace_backend: None,
+            disposable_workspace_retain_on_failure: None,
+            disposable_workspace_retain_on_success: None,
+            disposable_workspace_require_explicit_promotion: None,
         }
     }
 }

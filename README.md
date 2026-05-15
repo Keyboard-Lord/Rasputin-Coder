@@ -13,7 +13,7 @@ Rasputin is a local terminal-first coding agent that runs in your terminal, conn
 **What You Get**:
 - Terminal chat interface for local LLMs ✓
 - Task-like natural-language input that becomes a bounded autonomous goal ✓
-- Qwen-Coder-first goal planning with deterministic fallback ✓
+- Local coder-model goal planning with deterministic fallback ✓
 - Bounded, validated code execution through Forge ✓
 - **Multi-step chain execution** with validation gating ✓
 - **5-layer truth hierarchy**: Outcome → Progress → Audit → Replay → Checkpoint ✓
@@ -119,9 +119,9 @@ The product has two distinct runtime layers that share a UI shell:
 1. **Rasputin Product State** — long-running TUI state (chat history, repos, preferences)
 2. **Forge Worker State** — per-task execution state (files read, mutations, validation)
 
-**User consequence**: Task-like plain text is treated as a goal, planned with Qwen-Coder, confirmed automatically, and executed through a bounded chain. Question-like chat remains normal Ollama chat and does not mutate the previous Forge task's worker context.
+**User consequence**: Task-like plain text is treated as a goal, planned with the configured local coder model, confirmed automatically, and executed through a bounded chain. Question-like chat remains normal Ollama chat and does not mutate the previous Forge task's worker context.
 
-This is **intentional**: autonomy is bounded by step limits, validation gates, approval checkpoints, and worker isolation. See [04_CORE_CONCEPTS.md](docs/04_CORE_CONCEPTS.md) and [14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md](docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md) for the full rationale.
+This is **intentional**: autonomy is bounded by step limits, validation gates, approval checkpoints, and per-task worker processes. See [04_CORE_CONCEPTS.md](docs/04_CORE_CONCEPTS.md) and [14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md](docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md) for the full rationale.
 
 ---
 
@@ -131,16 +131,19 @@ This is **intentional**: autonomy is bounded by step limits, validation gates, a
 
 | Category | What It Is NOT | Why |
 |----------|----------------|-----|
-| **Architecture** | A single shared in-memory model for chat and Forge | Forge worker state is process-isolated by design |
+| **Architecture** | A single shared in-memory model for chat and Forge | Forge worker state is kept in a separate per-task process |
 | **Execution** | An unbounded autonomous daemon | Execution has hard iteration limits and validation gates |
 | **Control** | An approval-driven orchestration system | No mid-task pause/resume within a chain step; resume requires explicit approval |
 | **Tooling** | A general-purpose shell replacement | Planner sees bounded tool surface with mode-gated access |
 | **Infrastructure** | A daemon/service | Process-per-task, no background worker |
+| **Security** | A true OS/container sandbox | Current protection is repository boundary enforcement plus bounded worker execution |
 | **Connectivity** | A cloud-connected product | Local Ollama only—no GPT-4, Claude, or APIs |
 | **UX** | A narrative-driven interface | Backend-shaped event stream by design |
 
 **Correct mental model**: A **bounded, validated, local autonomous SWE loop**—not an unbounded background agent.
 
 **Chain execution exists**: Multi-step chains with validation gating, checkpoints at validated boundaries, and guarded resume with explicit approval.
+
+**Sandbox status**: Rasputin does not currently provide chroot, jail, container, VM, syscall, OS permission, or network namespace isolation. File tools are bounded by repository path checks and command policy; worker processes are a reliability boundary, not a security sandbox.
 
 If you need continuous background execution, per-action approval inside every worker step, or cloud frontier models, Rasputin **will not meet your needs** in its current form.

@@ -3813,19 +3813,21 @@ mod completion_confidence_tests {
         let mut chain = create_test_chain_with_steps();
         chain.repo_path = Some(temp.path().to_string_lossy().to_string());
         chain.objective_satisfaction = contract_satisfaction(contract.clone());
-        chain.steps[0].execution_results.push(ExecutionResultCapture {
-            attempt: 0,
-            result_class: ExecutionResultClass::Success,
-            stdout: String::new(),
-            stderr: String::new(),
-            exit_code: Some(0),
-            test_results: None,
-            error_message: None,
-            failure_reason: None,
-            captured_at: chrono::Local::now(),
-            generated_retry_step_id: None,
-            affected_paths: vec!["docs/16_EXTRA_APPENDIX.md".to_string()],
-        });
+        chain.steps[0]
+            .execution_results
+            .push(ExecutionResultCapture {
+                attempt: 0,
+                result_class: ExecutionResultClass::Success,
+                stdout: String::new(),
+                stderr: String::new(),
+                exit_code: Some(0),
+                test_results: None,
+                error_message: None,
+                failure_reason: None,
+                captured_at: chrono::Local::now(),
+                generated_retry_step_id: None,
+                affected_paths: vec!["docs/16_EXTRA_APPENDIX.md".to_string()],
+            });
 
         chain.objective_satisfaction =
             CompletionConfidenceEvaluator::refresh_objective_satisfaction(&chain);

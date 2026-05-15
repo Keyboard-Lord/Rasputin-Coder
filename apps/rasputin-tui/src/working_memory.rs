@@ -96,7 +96,8 @@ impl WorkingMemory {
             original_intent: chain.raw_prompt_text().to_string(),
             objective_summary: chain.objective.clone(),
             artifact_contract: contract,
-            recent_files_changed: chain.recorded_affected_paths()
+            recent_files_changed: chain
+                .recorded_affected_paths()
                 .into_iter()
                 .map(PathBuf::from)
                 .collect(),
@@ -106,8 +107,14 @@ impl WorkingMemory {
             unresolved_deliverables: unresolved,
             updated_at: Local::now(),
             active_chain_id: Some(chain.id.clone()),
-            is_complete: chain.get_outcome()
-                .map(|o| matches!(o, ExecutionOutcome::Success | ExecutionOutcome::SuccessWithWarnings))
+            is_complete: chain
+                .get_outcome()
+                .map(|o| {
+                    matches!(
+                        o,
+                        ExecutionOutcome::Success | ExecutionOutcome::SuccessWithWarnings
+                    )
+                })
                 .unwrap_or(false),
             session_turn: 0,
         }
@@ -116,15 +123,23 @@ impl WorkingMemory {
     /// Refresh working memory from current chain state
     pub fn refresh(&mut self, chain: &PersistentChain) {
         self.artifact_contract = chain.objective_satisfaction.artifact_contract.clone();
-        self.recent_files_changed = chain.recorded_affected_paths()
+        self.recent_files_changed = chain
+            .recorded_affected_paths()
             .into_iter()
             .map(PathBuf::from)
             .collect();
         self.last_validation_result = Self::extract_last_validation(chain);
         self.last_blocker = Self::extract_last_blocker(chain);
-        self.unresolved_deliverables = Self::extract_unresolved_deliverables(chain, &self.artifact_contract);
-        self.is_complete = chain.get_outcome()
-            .map(|o| matches!(o, ExecutionOutcome::Success | ExecutionOutcome::SuccessWithWarnings))
+        self.unresolved_deliverables =
+            Self::extract_unresolved_deliverables(chain, &self.artifact_contract);
+        self.is_complete = chain
+            .get_outcome()
+            .map(|o| {
+                matches!(
+                    o,
+                    ExecutionOutcome::Success | ExecutionOutcome::SuccessWithWarnings
+                )
+            })
             .unwrap_or(false);
         self.updated_at = Local::now();
     }
@@ -154,28 +169,32 @@ impl WorkingMemory {
         if lower.starts_with("try again") || lower.starts_with("retry") {
             return FollowUpIntent::FixThat;
         }
-        if lower.starts_with("do the rest") 
+        if lower.starts_with("do the rest")
             || lower.starts_with("finish the rest")
             || lower.starts_with("complete the rest")
-            || lower.starts_with("handle the rest") {
+            || lower.starts_with("handle the rest")
+        {
             return FollowUpIntent::DoTheRest;
         }
         if lower.starts_with("make it cleaner")
             || lower.starts_with("clean it up")
             || lower.starts_with("improve it")
             || lower.starts_with("polish it")
-            || lower.starts_with("refine it") {
+            || lower.starts_with("refine it")
+        {
             return FollowUpIntent::Improve;
         }
         if lower.starts_with("now validate")
             || lower.starts_with("validate it")
             || lower.starts_with("check it")
-            || lower.starts_with("test it") {
+            || lower.starts_with("test it")
+        {
             return FollowUpIntent::Validate;
         }
         if lower.starts_with("finish the remaining")
             || lower.starts_with("complete the remaining")
-            || lower.starts_with("do the remaining") {
+            || lower.starts_with("do the remaining")
+        {
             return FollowUpIntent::FinishRemaining;
         }
 
@@ -194,8 +213,7 @@ impl WorkingMemory {
                 if self.is_complete {
                     Some(format!(
                         "Review completed work: {}. Original task: {}",
-                        self.objective_summary,
-                        self.original_intent
+                        self.objective_summary, self.original_intent
                     ))
                 } else if !self.unresolved_deliverables.is_empty() {
                     let remaining = self.unresolved_deliverables.join(", ");
@@ -206,8 +224,7 @@ impl WorkingMemory {
                 } else {
                     Some(format!(
                         "Continue working on: {}. Original task: {}",
-                        self.objective_summary,
-                        self.original_intent
+                        self.objective_summary, self.original_intent
                     ))
                 }
             }
@@ -220,8 +237,7 @@ impl WorkingMemory {
                 } else {
                     Some(format!(
                         "Fix issues in: {}. Original task: {}",
-                        self.objective_summary,
-                        self.original_intent
+                        self.objective_summary, self.original_intent
                     ))
                 }
             }
@@ -233,7 +249,9 @@ impl WorkingMemory {
                         self.objective_summary, remaining
                     ))
                 } else if let Some(ref contract) = self.artifact_contract {
-                    let missing: Vec<_> = contract.required_filenames.iter()
+                    let missing: Vec<_> = contract
+                        .required_filenames
+                        .iter()
                         .filter(|f| !contract.created_filenames.contains(f))
                         .cloned()
                         .collect();
@@ -258,7 +276,9 @@ impl WorkingMemory {
             }
             FollowUpIntent::Improve => {
                 if !self.recent_files_changed.is_empty() {
-                    let files = self.recent_files_changed.iter()
+                    let files = self
+                        .recent_files_changed
+                        .iter()
                         .map(|p| p.display().to_string())
                         .collect::<Vec<_>>()
                         .join(", ");
@@ -297,14 +317,17 @@ impl WorkingMemory {
                 // Similar to DoTheRest but more specific about remaining items
                 let mut deliverables = Vec::new();
                 if let Some(ref contract) = self.artifact_contract {
-                    let missing: Vec<_> = contract.required_filenames.iter()
+                    let missing: Vec<_> = contract
+                        .required_filenames
+                        .iter()
                         .filter(|f| !contract.created_filenames.contains(f))
                         .cloned()
                         .collect();
                     deliverables.extend(missing);
                 }
                 deliverables.extend(self.unresolved_deliverables.clone());
-                deliverables = deliverables.into_iter()
+                deliverables = deliverables
+                    .into_iter()
                     .collect::<HashSet<_>>()
                     .into_iter()
                     .collect();
@@ -353,7 +376,9 @@ impl WorkingMemory {
                     created, total
                 ));
                 if missing > 0 && missing <= 5 {
-                    let remaining: Vec<_> = contract.required_filenames.iter()
+                    let remaining: Vec<_> = contract
+                        .required_filenames
+                        .iter()
                         .filter(|f| !contract.created_filenames.contains(f))
                         .cloned()
                         .collect();
@@ -364,7 +389,9 @@ impl WorkingMemory {
 
         // Recent files
         if !self.recent_files_changed.is_empty() {
-            let recent: Vec<_> = self.recent_files_changed.iter()
+            let recent: Vec<_> = self
+                .recent_files_changed
+                .iter()
                 .rev()
                 .take(5)
                 .map(|p| p.display().to_string())
@@ -375,12 +402,19 @@ impl WorkingMemory {
         // Last validation
         if let Some(ref validation) = self.last_validation_result {
             let status = if validation.passed { "✓" } else { "✗" };
-            lines.push(format!("Last validation: {} {}", status, validation.message));
+            lines.push(format!(
+                "Last validation: {} {}",
+                status, validation.message
+            ));
         }
 
         // Blocker
         if let Some(ref blocker) = self.last_blocker {
-            let recovery = if blocker.recoverable { "(recoverable)" } else { "(blocked)" };
+            let recovery = if blocker.recoverable {
+                "(recoverable)"
+            } else {
+                "(blocked)"
+            };
             lines.push(format!("Current blocker: {} {}", blocker.reason, recovery));
         }
 
@@ -410,7 +444,9 @@ impl WorkingMemory {
             if let Some(ref outcome) = step.execution_outcome {
                 let (passed, message) = match outcome {
                     ExecutionOutcome::Success => (true, "Step completed successfully".to_string()),
-                    ExecutionOutcome::SuccessWithWarnings => (true, "Completed with warnings".to_string()),
+                    ExecutionOutcome::SuccessWithWarnings => {
+                        (true, "Completed with warnings".to_string())
+                    }
                     ExecutionOutcome::Blocked => (false, "Step blocked".to_string()),
                     ExecutionOutcome::Failed => (false, "Step failed".to_string()),
                 };
@@ -476,7 +512,8 @@ impl WorkingMemory {
             }
         }
 
-        unresolved = unresolved.into_iter()
+        unresolved = unresolved
+            .into_iter()
             .collect::<HashSet<_>>()
             .into_iter()
             .collect();
@@ -498,7 +535,7 @@ pub fn compute_working_memory(persistence: &PersistentState) -> Option<WorkingMe
 /// Check if input should be routed to active work instead of chat
 pub fn should_route_to_active_work(input: &str, persistence: &PersistentState) -> bool {
     let intent = WorkingMemory::detect_follow_up_intent(input);
-    
+
     // Only route to active work if there's a valid chain and it's a follow-up
     if matches!(intent, FollowUpIntent::NewTask) {
         return false;

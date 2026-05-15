@@ -181,7 +181,7 @@ pub enum Command {
         prompt: String,
         strategy: AutoChainStrategy,
     },
-    
+
     // V2.6: Large prompt decomposer with artifact contract
     ArtifactContract {
         prompt: String,
@@ -770,14 +770,15 @@ pub fn parse_command(text: &str) -> Command {
     }
 
     if lower.starts_with("/doc generate ") || lower.starts_with("/docs generate ") {
-        let args = trimmed.trim_start_matches("/doc generate ")
+        let args = trimmed
+            .trim_start_matches("/doc generate ")
             .trim_start_matches("/docs generate ")
             .trim();
-        
+
         let mut repo_path = None;
         let mut output_dir = None;
         let mut doc_number = None;
-        
+
         // Parse arguments: --repo <path> --out <dir> --doc <n>
         let parts: Vec<&str> = args.split_whitespace().collect();
         let mut i = 0;
@@ -812,7 +813,7 @@ pub fn parse_command(text: &str) -> Command {
                 _ => i += 1,
             }
         }
-        
+
         return Command::DocGenerate {
             repo_path,
             output_dir,
@@ -825,7 +826,10 @@ pub fn parse_command(text: &str) -> Command {
     }
 
     if lower.starts_with("/doc validate ") {
-        let output_dir = trimmed.trim_start_matches("/doc validate ").trim().to_string();
+        let output_dir = trimmed
+            .trim_start_matches("/doc validate ")
+            .trim()
+            .to_string();
         return Command::DocValidate { output_dir };
     }
 
@@ -836,10 +840,10 @@ pub fn parse_command(text: &str) -> Command {
             .trim_start_matches("/chain-auto ")
             .trim()
             .to_string();
-        
+
         // Detect strategy from prompt content
         let strategy = detect_chain_strategy(&prompt);
-        
+
         return Command::AutoChain { prompt, strategy };
     }
 
@@ -850,8 +854,11 @@ pub fn parse_command(text: &str) -> Command {
             .trim_start_matches("/contract ")
             .trim()
             .to_string();
-        
-        return Command::ArtifactContract { prompt, auto_detect: true };
+
+        return Command::ArtifactContract {
+            prompt,
+            auto_detect: true,
+        };
     }
 
     if trimmed.starts_with('/') {
@@ -882,7 +889,7 @@ Info:
                             Same as /model <tag>
   /status                   Show runtime status and connection state
   /validate                 Run validation pipeline (syntax, lint, build, test)
-  /goal <description>       Plan a bounded autonomous goal with Qwen-Coder
+  /goal <description>       Plan a bounded autonomous goal with Goal Planner
   /goal confirm             Accept the plan and start the bounded chain
   /task <description>       Legacy/manual Forge task entrypoint
   /read <path>              Read a file inside the active project
@@ -945,7 +952,7 @@ Interaction truth:
   Task-like plain text      Plans a goal and queues bounded autonomous execution
   Question-like plain chat  Talks to Ollama only
   EDIT mode                 Enables real file reads/writes
-  /goal <description>       Uses Qwen-Coder first, with heuristic fallback
+  /goal <description>       Uses Goal Planner first, with heuristic fallback
   /goal confirm             Enables auto-resume/auto-advance within policy gates
   /task <description>       Legacy manual Forge task path
   /validate                 Runs the local validation pipeline
@@ -958,27 +965,28 @@ Read the inspector for task progress. The main chat pane only shows compact task
 /// Detect the optimal chain strategy for a large prompt
 fn detect_chain_strategy(prompt: &str) -> AutoChainStrategy {
     let lower = prompt.to_lowercase();
-    
+
     // Check for 15 canonical docs pattern
     if lower.contains("canonical") && lower.contains("doc")
         || lower.matches(".md").count() >= 5
-        || lower.matches("## ").count() >= 10 {
+        || lower.matches("## ").count() >= 10
+    {
         return AutoChainStrategy::ByDocument;
     }
-    
+
     // Check for multiple file operations
     if lower.matches("write_file").count() >= 3
         || lower.matches("create file").count() >= 3
-        || lower.matches("generate file").count() >= 3 {
+        || lower.matches("generate file").count() >= 3
+    {
         return AutoChainStrategy::ByFile;
     }
-    
+
     // Check for section-based content
-    if lower.matches("\n## ").count() >= 5
-        || lower.matches("\n### ").count() >= 5 {
+    if lower.matches("\n## ").count() >= 5 || lower.matches("\n### ").count() >= 5 {
         return AutoChainStrategy::BySection;
     }
-    
+
     // Default: auto-detect at runtime
     AutoChainStrategy::Auto
 }

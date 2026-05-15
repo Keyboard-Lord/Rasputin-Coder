@@ -1,20 +1,20 @@
 //! Deep Forge: Air-gapped, self-exhausting code refinement engine
-//! 
+//!
 //! Usage: rasputin-forge --target <path_to_repo>
 
 use clap::Parser;
 use std::path::PathBuf;
-use tracing::{error, info};
+use tracing::info;
 
-mod types;
-mod critic;
 mod chisel;
-mod ollama;
+mod critic;
 mod forge_loop;
 mod git;
+mod ollama;
+mod types;
 
-use types::ForgeConfig;
 use forge_loop::ExhaustionLoop;
+use types::ForgeConfig;
 
 /// Deep Forge CLI arguments
 #[derive(Parser, Debug)]
@@ -25,33 +25,36 @@ struct Args {
     /// Target repository path
     #[arg(short, long, value_name = "PATH")]
     target: PathBuf,
-    
+
     /// Ollama model to use
     #[arg(short, long, default_value = "qwen2.5-coder:14b")]
     model: String,
-    
+
     /// Ollama API endpoint
     #[arg(long, default_value = "http://localhost:11434/api/generate")]
     ollama_endpoint: String,
-    
+
     /// Timeout for Ollama requests (seconds)
     #[arg(long, default_value_t = 300)]
     timeout: u64,
-    
+
     /// Maximum iterations before declaring stalled
     #[arg(long, default_value_t = 100)]
     max_iterations: usize,
-    
+
     /// Disable auto-commit
     #[arg(long)]
     no_commit: bool,
-    
+
     /// Test command to run
     #[arg(long, default_value = "cargo test")]
     test_command: String,
-    
+
     /// Linter commands (comma-separated)
-    #[arg(long, default_value = "cargo clippy --all-targets --all-features -- -D warnings")]
+    #[arg(
+        long,
+        default_value = "cargo clippy --all-targets --all-features -- -D warnings"
+    )]
     linters: String,
 }
 
@@ -61,10 +64,10 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter("rasputin_forge=info,critic=info,chisel=info,ollama=info,forge_loop=info")
         .init();
-    
+
     // Parse arguments
     let args = Args::parse();
-    
+
     // Build configuration
     let config = ForgeConfig {
         target_repo: args.target.clone(),
@@ -73,16 +76,20 @@ async fn main() {
         ollama_timeout: args.timeout,
         max_iterations: args.max_iterations,
         auto_commit: !args.no_commit,
-        linters: args.linters.split(',').map(|s| s.trim().to_string()).collect(),
+        linters: args
+            .linters
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect(),
         test_command: args.test_command.clone(),
     };
-    
+
     // Validate target exists
     if !args.target.exists() {
         eprintln!("[FATAL] Target path does not exist: {:?}", args.target);
         std::process::exit(1);
     }
-    
+
     // Validate it's a git repository
     let git_path = args.target.join(".git");
     if !git_path.exists() {
@@ -90,14 +97,14 @@ async fn main() {
         eprintln!("        Initialize with: git init");
         std::process::exit(1);
     }
-    
+
     info!("[DEEP FORGE] Target: {:?}", args.target);
     info!("[DEEP FORGE] Model: {}", args.model);
     info!("[DEEP FORGE] Ollama: {}", args.ollama_endpoint);
-    
+
     // Print banner
     print_banner();
-    
+
     // Run the Masterpiece Loop
     match run_forge(config).await {
         Ok(stats) => {
@@ -108,7 +115,7 @@ async fn main() {
             println!("Patches applied: {}", stats.patches_applied);
             println!("Tests passed: {}", stats.tests_passed);
             println!("Tests failed: {}", stats.tests_failed);
-            
+
             std::process::exit(0);
         }
         Err(e) => {
@@ -123,7 +130,7 @@ async fn run_forge(config: ForgeConfig) -> Result<types::ForgeStats, types::Forg
     // Create backup branch
     let git = git::GitOps::new(config.target_repo.clone())?;
     git.create_backup_branch().await?;
-    
+
     // Initialize and run exhaustion loop
     let mut forge = ExhaustionLoop::new(config).await?;
     forge.run().await
@@ -131,7 +138,8 @@ async fn run_forge(config: ForgeConfig) -> Result<types::ForgeStats, types::Forg
 
 /// Print the Deep Forge banner
 fn print_banner() {
-    println!(r#"
+    println!(
+        r#"
     ╔══════════════════════════════════════════════════════════╗
     ║                                                          ║
     ║           D E E P   F O R G E   A C T I V A T E D        ║
@@ -143,5 +151,6 @@ fn print_banner() {
     ║     Loop: Until No Flaws Remain                         ║
     ║                                                          ║
     ╚══════════════════════════════════════════════════════════╝
-    "#);
+    "#
+    );
 }

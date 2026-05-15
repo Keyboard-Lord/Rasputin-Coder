@@ -9,28 +9,28 @@ use thiserror::Error;
 pub enum ForgeError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("Git error: {0}")]
     Git(String),
-    
+
     #[error("Linter error: {0}")]
     Linter(String),
-    
+
     #[error("Ollama API error: {0}")]
     Ollama(String),
-    
+
     #[error("Patch application failed: {0}")]
     PatchFailed(String),
-    
+
     #[error("Test failure: {0}")]
     TestFailed(String),
-    
+
     #[error("Exhaustion loop stalled after {0} iterations")]
     LoopStalled(usize),
-    
+
     #[error("AST parsing error: {0}")]
     AstParse(String),
-    
+
     #[error("Invalid SEARCH/REPLACE block: {0}")]
     InvalidDiff(String),
 }
@@ -128,38 +128,40 @@ impl FlawQueue {
             max_retries: 3,
         }
     }
-    
+
     /// Check if queue is empty
     pub fn is_empty(&self) -> bool {
         self.flaws.is_empty()
     }
-    
+
     /// Get count of remaining flaws
     pub fn len(&self) -> usize {
         self.flaws.len()
     }
-    
+
     /// Pop the highest priority flaw
     pub fn pop_next(&mut self) -> Option<Flaw> {
         if self.flaws.is_empty() {
             return None;
         }
-        
+
         // Find highest priority flaw
-        let max_idx = self.flaws.iter()
+        let max_idx = self
+            .flaws
+            .iter()
             .enumerate()
             .max_by_key(|(_, f)| f.priority)
             .map(|(i, _)| i)?;
-        
+
         self.processed_count += 1;
         Some(self.flaws.remove(max_idx))
     }
-    
+
     /// Add a flaw to the queue
     pub fn push(&mut self, flaw: Flaw) {
         self.flaws.push(flaw);
     }
-    
+
     /// Move flaw to back of queue (for retry after failure)
     pub fn retry_later(&mut self, flaw: Flaw) {
         let mut flaw = flaw;
@@ -169,7 +171,7 @@ impl FlawQueue {
         }
         self.flaws.push(flaw);
     }
-    
+
     /// Sort by priority (descending)
     pub fn sort_by_priority(&mut self) {
         self.flaws.sort_by(|a, b| b.priority.cmp(&a.priority));
@@ -188,8 +190,13 @@ pub struct Patch {
 /// Result of applying a patch
 #[derive(Debug)]
 pub enum PatchResult {
-    Success { file_path: PathBuf, applied_at: usize },
-    Failed { reason: String },
+    Success {
+        file_path: PathBuf,
+        applied_at: usize,
+    },
+    Failed {
+        reason: String,
+    },
 }
 
 /// Status of the exhaustion loop

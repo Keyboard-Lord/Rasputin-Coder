@@ -3,11 +3,13 @@
 //! Chain-aware multi-document generation that breaks large documentation
 //! tasks into manageable steps within Rasputin's bounded execution limits.
 
-use crate::persistence::{ChainLifecycleStatus, ChainStepStatus, PersistentChain, PersistentChainStep};
+use crate::persistence::{
+    ChainLifecycleStatus, ChainStepStatus, PersistentChain, PersistentChainStep,
+};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use tracing::{info, warn};
+use tracing::info;
 
 /// The 15 canonical documentation definitions
 pub const CANONICAL_DOCS: &[DocDefinition] = &[
@@ -16,7 +18,12 @@ pub const CANONICAL_DOCS: &[DocDefinition] = &[
         filename: "01_PROJECT_OVERVIEW.md",
         title: "Project Overview",
         purpose: "High-level purpose, goals, value proposition, and elevator pitch",
-        sections: &["Elevator Pitch", "Core Purpose", "Quick Start", "Design Philosophy"],
+        sections: &[
+            "Elevator Pitch",
+            "Core Purpose",
+            "Quick Start",
+            "Design Philosophy",
+        ],
     },
     DocDefinition {
         number: 2,
@@ -30,21 +37,36 @@ pub const CANONICAL_DOCS: &[DocDefinition] = &[
         filename: "03_TECHNOLOGY_STACK.md",
         title: "Technology Stack",
         purpose: "Languages, frameworks, libraries, tools, versions",
-        sections: &["Languages", "Dependencies", "Build Configuration", "Rationale"],
+        sections: &[
+            "Languages",
+            "Dependencies",
+            "Build Configuration",
+            "Rationale",
+        ],
     },
     DocDefinition {
         number: 4,
         filename: "04_CORE_CONCEPTS.md",
         title: "Core Concepts",
         purpose: "Domain model, abstractions, patterns, terminology",
-        sections: &["Truth Layers", "Domain Model", "Bounded Execution", "Glossary"],
+        sections: &[
+            "Truth Layers",
+            "Domain Model",
+            "Bounded Execution",
+            "Glossary",
+        ],
     },
     DocDefinition {
         number: 5,
         filename: "05_FOLDER_STRUCTURE.md",
         title: "Folder Structure",
         purpose: "Directory layout, purpose of each folder/module",
-        sections: &["Repository Layout", "Directory Purposes", "Key Files", "Data Paths"],
+        sections: &[
+            "Repository Layout",
+            "Directory Purposes",
+            "Key Files",
+            "Data Paths",
+        ],
     },
     DocDefinition {
         number: 6,
@@ -65,14 +87,24 @@ pub const CANONICAL_DOCS: &[DocDefinition] = &[
         filename: "08_DATA_MODEL.md",
         title: "Data Model",
         purpose: "Schemas, entities, relationships, data flows",
-        sections: &["PersistentState", "PersistentChain", "AuditLog", "Validation"],
+        sections: &[
+            "PersistentState",
+            "PersistentChain",
+            "AuditLog",
+            "Validation",
+        ],
     },
     DocDefinition {
         number: 9,
         filename: "09_CONFIGURATION.md",
         title: "Configuration",
         purpose: "Config options, environment variables, setup, defaults",
-        sections: &["Config Files", "Environment Variables", "Ollama Setup", "Defaults"],
+        sections: &[
+            "Config Files",
+            "Environment Variables",
+            "Ollama Setup",
+            "Defaults",
+        ],
     },
     DocDefinition {
         number: 10,
@@ -221,11 +253,18 @@ async fn generate_doc_content(doc: &DocDefinition, repo_path: &Path) -> Result<S
 
     // For now, generate a structured template
     let mut content = String::new();
+    let repo_label = repo_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("repository");
 
     // Header
     content.push_str(&format!("# {}\n\n", doc.title));
     content.push_str("## Overview\n\n");
-    content.push_str(&format!("{}\n\n", doc.purpose));
+    content.push_str(&format!(
+        "{} This document is scoped to `{}`.\n\n",
+        doc.purpose, repo_label
+    ));
 
     // Sections
     for section in doc.sections {
@@ -272,10 +311,17 @@ pub fn create_doc_chain(repo_path: &Path, output_dir: &Path) -> PersistentChain 
 
     PersistentChain {
         id: format!("doc-gen-{}", uuid::Uuid::new_v4()),
-        name: "Documentation Generation".to_string(),
+        name: format!(
+            "Documentation Generation: {}",
+            repo_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("repository")
+        ),
         objective: format!(
-            "Generate 15 canonical documentation files for {}",
-            repo_path.display()
+            "Generate 15 canonical documentation files for {} into {}",
+            repo_path.display(),
+            output_dir.display()
         ),
         raw_prompt: String::new(),
         status: ChainLifecycleStatus::Ready,
@@ -340,7 +386,9 @@ pub fn validate_generated_docs(output_dir: &Path) -> Result<ValidationReport> {
                     report.valid += 1;
                 } else {
                     report.invalid += 1;
-                    report.errors.push(format!("{}: {}", doc.filename, errors.join(", ")));
+                    report
+                        .errors
+                        .push(format!("{}: {}", doc.filename, errors.join(", ")));
                 }
             }
             Err(e) => {
@@ -414,10 +462,7 @@ mod tests {
     #[test]
     fn test_progress_calculation() {
         let temp_dir = tempfile::tempdir().unwrap();
-        let state = DocGenerationState::new(
-            PathBuf::from("/repo"),
-            temp_dir.path().to_path_buf(),
-        );
+        let state = DocGenerationState::new(PathBuf::from("/repo"), temp_dir.path().to_path_buf());
 
         let (completed, total) = state.progress();
         assert_eq!(completed, 0);

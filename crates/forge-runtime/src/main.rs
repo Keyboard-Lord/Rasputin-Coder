@@ -14,8 +14,8 @@ mod chain_registry;
 mod context_assembly;
 mod crypto_hash;
 mod determinism_guard;
-mod explicit_artifact_contract;
 mod execution;
+mod explicit_artifact_contract;
 mod git_grounding;
 mod governance;
 mod observability;
@@ -27,11 +27,11 @@ mod runtime_gates;
 mod state;
 mod system_invariants;
 mod task_intake;
-mod working_memory;
 mod tool_registry;
 mod tools;
 mod types;
 mod validator;
+mod working_memory;
 
 #[cfg(test)]
 mod chain_fixtures;
@@ -118,12 +118,17 @@ fn main() {
     let css_compression = env_override("FORGE_CSS_COMPRESSION")
         .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
         .unwrap_or(false);
+    let sandbox_mode = resolve_sandbox_mode().unwrap_or_else(|error| {
+        eprintln!("Configuration error: {}", error);
+        std::process::exit(2);
+    });
 
     let config = RuntimeConfig {
         max_iterations,
         task: task.to_string(),
         auto_revert: true,
         mode: types::ExecutionMode::Edit,
+        sandbox_mode,
         planner_type: planner_type.to_string(),
         planner_endpoint,
         planner_model,
@@ -137,6 +142,7 @@ fn main() {
         println!("Task: {}", config.task);
         println!("Max iterations: {}", config.max_iterations);
         println!("Mode: {:?}", config.mode);
+        println!("Sandbox mode: {}", config.sandbox_mode.as_config_value());
         println!("Planner: {}", config.planner_type);
         println!();
         println!("{}", "-".repeat(60));
@@ -188,6 +194,23 @@ fn workspace_planner_model() -> Option<(String, &'static str)> {
         .map(|config| (normalize_requested_model(&config.model), config.source))
 }
 
+fn resolve_sandbox_mode() -> Result<types::SandboxMode, types::ForgeError> {
+    if let Some(value) = env_override("FORGE_SANDBOX_MODE") {
+        return types::SandboxMode::from_config_value(&value);
+    }
+
+    let current_dir = match env::current_dir() {
+        Ok(dir) => dir,
+        Err(_) => return Ok(types::SandboxMode::RepoBoundaryOnly),
+    };
+
+    if let Some(config) = workspace_config::discover_workspace_sandbox_mode(&current_dir) {
+        return types::SandboxMode::from_config_value(&config.sandbox_mode);
+    }
+
+    Ok(types::SandboxMode::RepoBoundaryOnly)
+}
+
 fn env_override(key: &str) -> Option<String> {
     env::var(key).ok().filter(|value| !value.trim().is_empty())
 }
@@ -210,11 +233,16 @@ fn print_help() {
     println!("    -v, --version       Print version information");
     println!();
     println!("ENVIRONMENT:");
-    println!("    FORGE_PLANNER_MODEL         Model to use (default: qwen2.5-coder:14b)");
+    println!(
+        "    FORGE_PLANNER_MODEL         Model to use (default: huihui_ai/deepseek-r1-abliterated:14b)"
+    );
     println!("    FORGE_PLANNER_ENDPOINT    Ollama endpoint (default: http://127.0.0.1:11434)");
     println!("    FORGE_PLANNER_TIMEOUT_SECONDS  Planner request timeout in seconds (default: 30)");
     println!("    FORGE_PLANNER_TEMPERATURE   Temperature 0.0-0.1 (default: 0.0)");
     println!("    FORGE_PLANNER_SEED          Random seed (default: 42)");
+    println!(
+        "    FORGE_SANDBOX_MODE          Execution containment mode (default: repo_boundary_only)"
+    );
     println!("    FORGE_CSS_COMPRESSION       Enable CSS compression (default: auto)");
     println!("    FORGE_OUTPUT_MODE           Output format: jsonl (default: human)");
     println!();

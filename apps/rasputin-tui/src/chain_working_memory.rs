@@ -3,11 +3,10 @@
 //! Maintains context across chain steps so each step builds on previous work.
 //! Prevents redundant repository analysis and enables progressive refinement.
 
-use crate::persistence::PersistentChain;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use serde::{Serialize, Deserialize};
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 /// Working memory for a chain execution
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -127,71 +126,91 @@ impl ChainWorkingMemory {
             data_flows: vec![],
         }
     }
-    
+
     /// Store repository structure from Phase 0
     pub fn set_repo_structure(&mut self, structure: RepoStructure) {
-        info!("Working memory: Stored repo structure with {} top-level dirs", 
-            structure.top_level_dirs.len());
+        info!(
+            "Working memory: Stored repo structure with {} top-level dirs",
+            structure.top_level_dirs.len()
+        );
         self.repo_structure = Some(structure);
     }
-    
+
     /// Store source analysis from Phase 1
     pub fn set_source_analysis(&mut self, analysis: SourceAnalysis) {
-        info!("Working memory: Stored source analysis with {} modules", 
-            analysis.modules.len());
+        info!(
+            "Working memory: Stored source analysis with {} modules",
+            analysis.modules.len()
+        );
         self.source_analysis = Some(analysis);
     }
-    
+
     /// Add completed artifact summary
     pub fn add_completed_artifact(&mut self, path: impl Into<String>, summary: ArtifactSummary) {
         let path_str = path.into();
         debug!("Working memory: Added artifact {}", path_str);
         self.completed_artifacts.insert(path_str, summary);
     }
-    
+
     /// Add key finding
     pub fn add_finding(&mut self, finding: impl Into<String>) {
         self.key_findings.push(finding.into());
     }
-    
+
     /// Get context for artifact generation step
     pub fn get_generation_context(&self, target_artifact_path: &str) -> String {
-        let mut context_parts = vec![];
-        
+        let mut context_parts = vec![format!("TARGET ARTIFACT: {}", target_artifact_path)];
+
         // Repo structure context
         if let Some(structure) = &self.repo_structure {
             context_parts.push(format!(
                 "REPO STRUCTURE:\n- Root: {}\n- Top dirs: {}\n- Tech stack: {}",
                 structure.root_path.display(),
-                structure.top_level_dirs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>().join(", "),
+                structure
+                    .top_level_dirs
+                    .iter()
+                    .map(|d| d.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
                 structure.tech_stack.join(", ")
             ));
         }
-        
+
         // Previous artifacts context (to avoid duplication)
         if !self.completed_artifacts.is_empty() {
-            let artifacts_summary: Vec<String> = self.completed_artifacts
+            let artifacts_summary: Vec<String> = self
+                .completed_artifacts
                 .values()
-                .map(|a| format!("- {}: {}", a.path, a.content_summary.chars().take(100).collect::<String>()))
+                .map(|a| {
+                    format!(
+                        "- {}: {}",
+                        a.path,
+                        a.content_summary.chars().take(100).collect::<String>()
+                    )
+                })
                 .collect();
-            
+
             context_parts.push(format!(
                 "PREVIOUSLY GENERATED (for reference, don't duplicate):\n{}",
                 artifacts_summary.join("\n")
             ));
         }
-        
+
         // Key findings
         if !self.key_findings.is_empty() {
             context_parts.push(format!(
                 "KEY FINDINGS:\n{}",
-                self.key_findings.iter().map(|f| format!("- {}", f)).collect::<Vec<_>>().join("\n")
+                self.key_findings
+                    .iter()
+                    .map(|f| format!("- {}", f))
+                    .collect::<Vec<_>>()
+                    .join("\n")
             ));
         }
-        
+
         context_parts.join("\n\n")
     }
-    
+
     /// Get prompt for planning phase
     pub fn get_planning_prompt(&self) -> String {
         r#"PHASE 0: REPOSITORY INVENTORY
@@ -211,9 +230,10 @@ Output format:
 - Entry points: [main files]
 - Tech stack: [languages, frameworks]
 - Patterns: [architectural patterns]
-"#.to_string()
+"#
+        .to_string()
     }
-    
+
     /// Get prompt for source mapping phase
     pub fn get_source_mapping_prompt(&self) -> String {
         let base = r#"PHASE 1: SOURCE MAP
@@ -234,39 +254,61 @@ Output format:
 - Data flows: [patterns]
 - Configs: [configuration points]
 "#;
-        
+
         // If we have repo structure, include it
         if let Some(structure) = &self.repo_structure {
             format!(
                 "{}\n\nREPO CONTEXT FROM PHASE 0:\n- Top dirs: {}\n- Tech: {}\n",
                 base,
-                structure.top_level_dirs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>().join(", "),
+                structure
+                    .top_level_dirs
+                    .iter()
+                    .map(|d| d.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
                 structure.tech_stack.join(", ")
             )
         } else {
             base.to_string()
         }
     }
-    
+
     /// Check if we have enough context to proceed
     pub fn has_planning_context(&self) -> bool {
         self.repo_structure.is_some()
     }
-    
+
     /// Get summary of memory state
     pub fn get_summary(&self) -> String {
         let mut parts = vec![
             format!("Working Memory for {}", self.chain_id),
-            format!("  Repo structure: {}", if self.repo_structure.is_some() { "✓" } else { "✗" }),
-            format!("  Source analysis: {}", if self.source_analysis.is_some() { "✓" } else { "✗" }),
+            format!(
+                "  Repo structure: {}",
+                if self.repo_structure.is_some() {
+                    "✓"
+                } else {
+                    "✗"
+                }
+            ),
+            format!(
+                "  Source analysis: {}",
+                if self.source_analysis.is_some() {
+                    "✓"
+                } else {
+                    "✗"
+                }
+            ),
             format!("  Artifacts completed: {}", self.completed_artifacts.len()),
             format!("  Key findings: {}", self.key_findings.len()),
         ];
-        
+
         if !self.architecture_patterns.is_empty() {
-            parts.push(format!("  Patterns: {}", self.architecture_patterns.join(", ")));
+            parts.push(format!(
+                "  Patterns: {}",
+                self.architecture_patterns.join(", ")
+            ));
         }
-        
+
         parts.join("\n")
     }
 }
@@ -282,7 +324,7 @@ impl ChainWorkingMemoryRegistry {
             memories: HashMap::new(),
         }
     }
-    
+
     /// Get or create working memory for a chain
     pub fn get_or_create(&mut self, chain_id: impl Into<String>) -> &mut ChainWorkingMemory {
         let id = chain_id.into();
@@ -291,17 +333,17 @@ impl ChainWorkingMemoryRegistry {
             ChainWorkingMemory::new(id)
         })
     }
-    
+
     /// Get existing memory
     pub fn get(&self, chain_id: &str) -> Option<&ChainWorkingMemory> {
         self.memories.get(chain_id)
     }
-    
+
     /// Remove memory when chain is done
     pub fn remove(&mut self, chain_id: &str) {
         self.memories.remove(chain_id);
     }
-    
+
     /// Clear all memories
     pub fn clear(&mut self) {
         self.memories.clear();
@@ -317,56 +359,69 @@ impl Default for ChainWorkingMemoryRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_working_memory() {
         let mut memory = ChainWorkingMemory::new("test-chain");
-        
+
         // Set repo structure
         memory.set_repo_structure(RepoStructure {
             root_path: PathBuf::from("/tmp/test"),
             top_level_dirs: vec![
-                DirectoryInfo { name: "src".to_string(), purpose: "Source code".to_string(), file_count: 10 },
-                DirectoryInfo { name: "tests".to_string(), purpose: "Tests".to_string(), file_count: 5 },
+                DirectoryInfo {
+                    name: "src".to_string(),
+                    purpose: "Source code".to_string(),
+                    file_count: 10,
+                },
+                DirectoryInfo {
+                    name: "tests".to_string(),
+                    purpose: "Tests".to_string(),
+                    file_count: 5,
+                },
             ],
-            key_files: vec![
-                FileInfo { path: "src/main.rs".to_string(), purpose: "Entry point".to_string(), lines_of_code: 100 },
-            ],
+            key_files: vec![FileInfo {
+                path: "src/main.rs".to_string(),
+                purpose: "Entry point".to_string(),
+                lines_of_code: 100,
+            }],
             entry_points: vec!["src/main.rs".to_string()],
             tech_stack: vec!["Rust".to_string(), "Tokio".to_string()],
         });
-        
+
         // Add artifact
-        memory.add_completed_artifact("docs/README.md", ArtifactSummary {
-            path: "docs/README.md".to_string(),
-            content_summary: "Project overview".to_string(),
-            key_sections: vec!["Introduction".to_string(), "Setup".to_string()],
-            references_source_files: vec!["src/main.rs".to_string()],
-        });
-        
+        memory.add_completed_artifact(
+            "docs/README.md",
+            ArtifactSummary {
+                path: "docs/README.md".to_string(),
+                content_summary: "Project overview".to_string(),
+                key_sections: vec!["Introduction".to_string(), "Setup".to_string()],
+                references_source_files: vec!["src/main.rs".to_string()],
+            },
+        );
+
         // Get generation context
         let context = memory.get_generation_context("docs/ARCHITECTURE.md");
         assert!(context.contains("REPO STRUCTURE"));
         assert!(context.contains("PREVIOUSLY GENERATED"));
-        
+
         // Check summary
         let summary = memory.get_summary();
         assert!(summary.contains("Repo structure: ✓"));
     }
-    
+
     #[test]
     fn test_registry() {
         let mut registry = ChainWorkingMemoryRegistry::new();
-        
+
         // Get or create
         let mem1 = registry.get_or_create("chain-1");
         mem1.add_finding("Important finding");
-        
+
         // Retrieve
         let mem2 = registry.get("chain-1");
         assert!(mem2.is_some());
         assert_eq!(mem2.unwrap().key_findings.len(), 1);
-        
+
         // Remove
         registry.remove("chain-1");
         assert!(registry.get("chain-1").is_none());

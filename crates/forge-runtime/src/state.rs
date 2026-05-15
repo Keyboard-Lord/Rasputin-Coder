@@ -525,15 +525,16 @@ impl AgentState {
         if !path.exists() {
             return None;
         }
-        
+
         let content = std::fs::read_to_string(&path).ok()?;
         let object: serde_json::Map<String, Value> = serde_json::from_str(&content).ok()?;
-        
+
         // Parse fields directly without hash verification
         let task = object.get("task")?.as_str()?.to_string();
-        let files_written: HashSet<PathBuf> = object.get("files_written")
+        let files_written: HashSet<PathBuf> = object
+            .get("files_written")
             .and_then(|v| serde_json::from_value(v.clone()).ok())?;
-        
+
         // Extract paths from change_history without deserializing full records
         let mut change_history = Vec::new();
         if let Some(Value::Array(records)) = object.get("change_history") {
@@ -551,14 +552,16 @@ impl AgentState {
                                     content_hash_before: None,
                                     content_hash_after: None,
                                 },
-                                validation_report: crate::types::ValidationReport::accept("Loaded from continuity"),
+                                validation_report: crate::types::ValidationReport::accept(
+                                    "Loaded from continuity",
+                                ),
                             });
                         }
                     }
                 }
             }
         }
-        
+
         // Create minimal state for working memory
         Some(Self {
             session_id: SessionId::new(),

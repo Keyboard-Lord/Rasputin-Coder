@@ -2,7 +2,7 @@
 
 ## System Overview
 
-Rasputin is a multi-layered system with clear separation between user-facing product code and bounded execution engines. The architecture prioritizes **failure isolation**, **deterministic execution**, **audit-grounded truth**, and **runtime truth over documentation**.
+Rasputin is a multi-layered system with clear separation between user-facing product code and bounded execution engines. The architecture prioritizes **failure containment**, **deterministic execution**, **audit-grounded truth**, and **runtime truth over documentation**.
 
 ## System Truth Layers (V1.6)
 
@@ -55,7 +55,7 @@ flowchart TB
         Persist["Persistence (~/.local/share/rasputin/)"]
         OllamaClient["Ollama HTTP Client"]
         Autonomy["Autonomous Loop Controller"]
-        GoalPlanner["Qwen Goal Planner"]
+        GoalPlanner["Coder Model Goal Planner"]
         Guidance["Guidance System (V1.3+)"]
     end
 
@@ -116,7 +116,7 @@ Located in `apps/rasputin-tui/`:
 | `state.rs` | **Canonical reducer**, `ExecutionState` transitions, `ExecutionOutcome` authority | Layer 1 & 2 |
 | `persistence.rs` | JSON serialization; **CheckpointManager**, **AuditLog** storage; chain orchestration | Layer 3 & 5 |
 | `autonomy.rs` | Goal lifecycle policy, autonomous start decisions | - |
-| `goal_planner.rs` | Qwen-Coder goal-plan prompt and JSON normalization | - |
+| `goal_planner.rs` | Local coder-model goal-plan prompt and JSON normalization | - |
 | `ollama.rs` | HTTP client for Ollama chat API (loopback-only) | - |
 | `forge_runtime.rs` | Worker spawning, JSONL event parsing, runtime bridge | - |
 | `commands.rs` | Slash command parsing | - |
@@ -253,8 +253,8 @@ User input → submit_active_input()
 ### Autonomous Goal Flow
 ```
 Task-like plain text or /goal → Command::Goal
-  └── QwenGoalPlanner builds repo-grounded JSON request
-      └── Ollama/Qwen-Coder returns plan JSON
+  └── Goal planner builds repo-grounded JSON request
+      └── Ollama coder model returns plan JSON
           └── Normalized into GeneratedPlan (heuristic fallback on failure)
               └── GoalConfirm materializes PersistentChain
                   └── AutonomousLoopController enables bounded auto policy
@@ -296,11 +296,12 @@ Task-like plain text or /goal → Command::Goal
 
 ## Key Architectural Decisions
 
-### Process Isolation
+### Per-Task Worker Process
 - Each Forge task spawns a **new process**
 - Worker death does not corrupt TUI state
 - Clean resource lifecycle via process termination
 - No shared memory between TUI and workers
+- This is a reliability boundary, not an OS/container sandbox
 
 ### Bounded Execution
 - Hard iteration limit (default 10)
@@ -341,7 +342,7 @@ sequenceDiagram
     participant Ollama
 
     User->>TUI: create hello.txt
-    TUI->>Ollama: Qwen-Coder goal-plan request
+    TUI->>Ollama: Local coder-model goal-plan request
     Ollama-->>TUI: JSON plan
     TUI->>TUI: Materialize goal chain + queue resume
     TUI->>Worker: Spawn process (forge_bootstrap)
@@ -415,11 +416,13 @@ fn validate_path_boundary(path: &Path, working_dir: &Path) -> Result<PathBuf, Fo
 - Operations outside repo boundary are rejected
 - Canonicalization ensures no symlink escapes
 
+This is repository boundary enforcement only. It does not provide chroot, container, VM, syscall, OS permission, or network namespace isolation, and it does not guarantee containment of arbitrary code executed by allowed commands.
+
 ### Command Execution Safety
 
 Shell commands are restricted via allowlisting:
 
-- **Safe commands**: cargo, npm, python, git (read-only), make, etc.
+- **Allowed commands**: cargo, npm, python, git (read-only), make, etc.
 - **Destructive commands**: rm, del, etc. require explicit confirmation
 - **Destructive git subcommands**: push, reset, clean, etc. require confirmation
 - **Timeout enforcement**: All commands have execution time limits
