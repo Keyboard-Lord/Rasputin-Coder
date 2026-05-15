@@ -3,6 +3,7 @@
 //! Stores: active repo, recent repos, conversations, messages, runtime events, model status
 
 use crate::forge_runtime::GitGrounding;
+use crate::forge_runtime::{RuntimeEvent, ValidationStageStatus};
 use crate::state::ObjectiveSatisfaction;
 use anyhow::Result;
 use chrono::{DateTime, Local};
@@ -24,6 +25,10 @@ pub struct PersistentState {
     pub conversations: Vec<PersistentConversation>,
     #[serde(default)]
     pub chains: Vec<PersistentChain>,
+    #[serde(default)]
+    pub work_sessions: Vec<PersistentWorkSession>,
+    #[serde(default)]
+    pub active_work_session_id: Option<String>,
     pub last_model_status: Option<ModelStatus>,
     #[serde(default)]
     pub chain_policy: ChainPolicy,
@@ -41,6 +46,151 @@ pub struct RecentRepo {
     pub name: String,
     pub last_opened: DateTime<Local>,
     pub ollama_model: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PersistentWorkSession {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub objective: String,
+    #[serde(default)]
+    pub intent_class: String,
+    #[serde(default)]
+    pub repo_path: Option<String>,
+    #[serde(default)]
+    pub conversation_id: Option<String>,
+    #[serde(default)]
+    pub active_chain_id: Option<String>,
+    #[serde(default)]
+    pub status: WorkSessionStatus,
+    #[serde(default)]
+    pub current_step_label: Option<String>,
+    #[serde(default)]
+    pub step_index: Option<u32>,
+    #[serde(default)]
+    pub step_total: Option<u32>,
+    #[serde(default)]
+    pub execution_mode: Option<String>,
+    #[serde(default)]
+    pub workspace_mode: Option<String>,
+    #[serde(default)]
+    pub disposable_workspace_used: bool,
+    #[serde(default)]
+    pub source_repo_changed: Option<bool>,
+    #[serde(default)]
+    pub changed_files: Vec<String>,
+    #[serde(default)]
+    pub validation_summary: Option<String>,
+    #[serde(default)]
+    pub promotion_report_status: Option<String>,
+    #[serde(default)]
+    pub next_action: Option<String>,
+    #[serde(default)]
+    pub last_user_facing_summary: Option<String>,
+    #[serde(default = "Local::now")]
+    pub created_at: DateTime<Local>,
+    #[serde(default = "Local::now")]
+    pub updated_at: DateTime<Local>,
+    #[serde(default)]
+    pub completed_at: Option<DateTime<Local>>,
+    #[serde(default)]
+    pub archived: bool,
+    #[serde(default = "default_work_session_schema_version")]
+    pub schema_version: u32,
+}
+
+impl PersistentWorkSession {
+    pub fn new(
+        objective: impl Into<String>,
+        intent_class: impl Into<String>,
+        repo_path: Option<String>,
+        conversation_id: Option<String>,
+        active_chain_id: Option<String>,
+    ) -> Self {
+        let now = Local::now();
+        Self {
+            id: format!(
+                "worksession-{}-{:08x}",
+                now.timestamp(),
+                rand::random::<u32>()
+            ),
+            objective: objective.into(),
+            intent_class: intent_class.into(),
+            repo_path,
+            conversation_id,
+            active_chain_id,
+            status: WorkSessionStatus::Planned,
+            current_step_label: None,
+            step_index: None,
+            step_total: None,
+            execution_mode: None,
+            workspace_mode: None,
+            disposable_workspace_used: false,
+            source_repo_changed: None,
+            changed_files: vec![],
+            validation_summary: None,
+            promotion_report_status: None,
+            next_action: None,
+            last_user_facing_summary: None,
+            created_at: now,
+            updated_at: now,
+            completed_at: None,
+            archived: false,
+            schema_version: default_work_session_schema_version(),
+        }
+    }
+
+    pub fn is_resumable(&self) -> bool {
+        !self.archived
+            && !matches!(
+                self.status,
+                WorkSessionStatus::Completed
+                    | WorkSessionStatus::Cancelled
+                    | WorkSessionStatus::Archived
+            )
+    }
+}
+
+impl Default for PersistentWorkSession {
+    fn default() -> Self {
+        Self::new("", "unknown", None, None, None)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkSessionStatus {
+    #[default]
+    Planned,
+    Running,
+    WaitingForReview,
+    WaitingForApproval,
+    Blocked,
+    Failed,
+    Completed,
+    Cancelled,
+    Archived,
+}
+
+impl WorkSessionStatus {
+    pub fn user_label(self) -> &'static str {
+        match self {
+            Self::Planned => "planned",
+            Self::Running => "in progress",
+            Self::WaitingForReview => "waiting for review",
+            Self::WaitingForApproval => "waiting for approval",
+            Self::Blocked => "blocked",
+            Self::Failed => "failed",
+            Self::Completed => "completed",
+            Self::Cancelled => "cancelled",
+            Self::Archived => "archived",
+        }
+    }
+}
+
+fn default_work_session_schema_version() -> u32 {
+    1
 }
 
 /// V2.4: First-class Project model - user-facing workspace concept
@@ -2420,6 +2570,16 @@ struct ChatsStore {
 struct ExecutionStateStore {
     version: String,
     last_updated: DateTime<Local>,
+    #[serde(default)]
+    active_chain_id: Option<String>,
+    #[serde(default)]
+    chains: Vec<PersistentChain>,
+    #[serde(default)]
+    work_sessions: Vec<PersistentWorkSession>,
+    #[serde(default)]
+    active_work_session_id: Option<String>,
+    #[serde(default)]
+    chain_policy: ChainPolicy,
     last_model_status: Option<ModelStatus>,
 }
 
@@ -2434,6 +2594,8 @@ impl PersistentState {
             recent_repos: vec![],
             conversations: vec![],
             chains: vec![],
+            work_sessions: vec![],
+            active_work_session_id: None,
             last_model_status: None,
             chain_policy: ChainPolicy::default(),
             projects: vec![],
@@ -2588,6 +2750,13 @@ impl PersistentState {
         };
         self.chains.push(chain);
         self.set_active_chain(Some(id));
+        let active_chain_id = self.active_chain_id.clone();
+        if let Some(session) = self.active_work_session_mut() {
+            if session.active_chain_id.is_none() {
+                session.active_chain_id = active_chain_id;
+                session.updated_at = Local::now();
+            }
+        }
         self.get_chain(&self.active_chain_id.as_ref().unwrap())
             .unwrap()
     }
@@ -2650,6 +2819,331 @@ impl PersistentState {
             }
         }
         false
+    }
+
+    pub fn create_work_session(
+        &mut self,
+        objective: impl Into<String>,
+        intent_class: impl Into<String>,
+    ) -> &PersistentWorkSession {
+        let session = PersistentWorkSession::new(
+            objective,
+            intent_class,
+            self.active_repo.clone(),
+            self.active_conversation.clone(),
+            self.active_chain_id.clone(),
+        );
+        let id = session.id.clone();
+        self.work_sessions.push(session);
+        self.active_work_session_id = Some(id);
+        self.last_updated = Local::now();
+        self.active_work_session().unwrap()
+    }
+
+    pub fn active_work_session(&self) -> Option<&PersistentWorkSession> {
+        self.active_work_session_id
+            .as_ref()
+            .and_then(|id| self.work_sessions.iter().find(|session| session.id == *id))
+    }
+
+    pub fn active_work_session_mut(&mut self) -> Option<&mut PersistentWorkSession> {
+        let id = self.active_work_session_id.clone()?;
+        self.work_sessions
+            .iter_mut()
+            .find(|session| session.id == id)
+    }
+
+    pub fn complete_work_session(&mut self, session_id: &str) -> Result<(), String> {
+        let session = self
+            .work_sessions
+            .iter_mut()
+            .find(|session| session.id == session_id)
+            .ok_or_else(|| format!("WorkSession '{}' not found", session_id))?;
+        session.status = WorkSessionStatus::Completed;
+        session.completed_at = Some(Local::now());
+        session.updated_at = Local::now();
+        if self.active_work_session_id.as_deref() == Some(session_id) {
+            self.active_work_session_id = None;
+        }
+        self.last_updated = Local::now();
+        Ok(())
+    }
+
+    pub fn archive_work_session(&mut self, session_id: &str) -> Result<(), String> {
+        let session = self
+            .work_sessions
+            .iter_mut()
+            .find(|session| session.id == session_id)
+            .ok_or_else(|| format!("WorkSession '{}' not found", session_id))?;
+        session.status = WorkSessionStatus::Archived;
+        session.archived = true;
+        session.updated_at = Local::now();
+        if self.active_work_session_id.as_deref() == Some(session_id) {
+            self.active_work_session_id = None;
+        }
+        self.last_updated = Local::now();
+        Ok(())
+    }
+
+    pub fn find_recent_work_sessions(
+        &self,
+        repo_path: Option<&str>,
+    ) -> Vec<&PersistentWorkSession> {
+        let mut sessions: Vec<_> = self
+            .work_sessions
+            .iter()
+            .filter(|session| {
+                !session.archived
+                    && repo_path
+                        .map(|path| session.repo_path.as_deref() == Some(path))
+                        .unwrap_or(true)
+            })
+            .collect();
+        sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        sessions
+    }
+
+    pub fn update_work_session_from_chain(&mut self, chain_id: &str) {
+        let Some(chain) = self.get_chain(chain_id).cloned() else {
+            if let Some(session) = self.active_work_session_mut() {
+                if session.active_chain_id.as_deref() == Some(chain_id) {
+                    session.status = WorkSessionStatus::Blocked;
+                    session.next_action = Some(
+                        "Linked chain is missing; choose another recent chain or start a new goal."
+                            .to_string(),
+                    );
+                    session.updated_at = Local::now();
+                }
+            }
+            return;
+        };
+
+        if self.active_work_session_id.is_none() {
+            let objective = if chain.objective.trim().is_empty() {
+                chain.name.clone()
+            } else {
+                chain.objective.clone()
+            };
+            self.create_work_session(objective, "reconstructed_from_chain");
+        }
+
+        let active_id = self.active_work_session_id.clone();
+        let session = active_id.as_ref().and_then(|id| {
+            self.work_sessions
+                .iter_mut()
+                .find(|session| session.id == *id)
+        });
+        let Some(session) = session else {
+            return;
+        };
+
+        if session.objective.trim().is_empty() {
+            session.objective = chain.objective.clone();
+        }
+        session.active_chain_id = Some(chain.id.clone());
+        session.repo_path = chain
+            .repo_path
+            .clone()
+            .or_else(|| session.repo_path.clone());
+        session.conversation_id = chain
+            .conversation_id
+            .clone()
+            .or_else(|| session.conversation_id.clone());
+        session.status = match chain.status {
+            ChainLifecycleStatus::Draft | ChainLifecycleStatus::Ready => WorkSessionStatus::Planned,
+            ChainLifecycleStatus::Running => WorkSessionStatus::Running,
+            ChainLifecycleStatus::WaitingForApproval => WorkSessionStatus::WaitingForApproval,
+            ChainLifecycleStatus::Halted => WorkSessionStatus::Blocked,
+            ChainLifecycleStatus::Failed => WorkSessionStatus::Failed,
+            ChainLifecycleStatus::Complete => WorkSessionStatus::Completed,
+            ChainLifecycleStatus::Archived => WorkSessionStatus::Archived,
+        };
+        if matches!(
+            session.status,
+            WorkSessionStatus::Completed | WorkSessionStatus::Archived
+        ) {
+            session.completed_at = chain.completed_at.or(Some(Local::now()));
+        }
+        session.current_step_label = chain
+            .active_step
+            .and_then(|index| chain.steps.get(index).map(|step| step.description.clone()))
+            .or_else(|| {
+                chain
+                    .steps
+                    .iter()
+                    .find(|step| {
+                        matches!(
+                            step.status,
+                            ChainStepStatus::Pending | ChainStepStatus::Running
+                        )
+                    })
+                    .map(|step| step.description.clone())
+            });
+        session.step_index = chain.active_step.map(|index| index as u32 + 1);
+        session.step_total = if chain.steps.is_empty() {
+            None
+        } else {
+            Some(chain.steps.len() as u32)
+        };
+        session.changed_files = changed_files_from_chain(&chain);
+        session.validation_summary = validation_summary_from_chain(&chain);
+        session.next_action = next_action_from_chain(&chain);
+        session.updated_at = Local::now();
+        self.last_updated = Local::now();
+    }
+
+    pub fn update_work_session_from_runtime_event(&mut self, event: &RuntimeEvent) {
+        let Some(session) = self.active_work_session_mut() else {
+            return;
+        };
+
+        match event {
+            RuntimeEvent::Init { task, .. } => {
+                session.status = WorkSessionStatus::Running;
+                if session.objective.trim().is_empty() {
+                    session.objective = task.clone();
+                }
+                session.current_step_label = Some("Runtime initialized".to_string());
+                session.step_index = Some(1);
+                session.step_total = Some(3);
+                session.next_action =
+                    Some("Run through the existing chain/runtime machinery.".to_string());
+            }
+            RuntimeEvent::IterationStart { iteration } => {
+                session.status = WorkSessionStatus::Running;
+                session.current_step_label = Some(format!("Planning iteration {}", iteration));
+                session.step_index = Some(1);
+                session.step_total = Some(3);
+            }
+            RuntimeEvent::PreflightPassed => {
+                session.status = WorkSessionStatus::Running;
+                session.current_step_label = Some("Preflight checks passed".to_string());
+            }
+            RuntimeEvent::ToolCall { name, .. } | RuntimeEvent::ToolExecuting { name } => {
+                session.status = WorkSessionStatus::Running;
+                session.current_step_label = Some(format!("Running {}", name));
+                session.step_index = Some(2);
+                session.step_total = Some(3);
+            }
+            RuntimeEvent::ToolResult { name, success, .. } => {
+                session.current_step_label = Some(if *success {
+                    format!("Completed {}", name)
+                } else {
+                    format!("Failed {}", name)
+                });
+                if !success {
+                    session.status = WorkSessionStatus::Blocked;
+                }
+            }
+            RuntimeEvent::MutationsDetected { count } => {
+                session.status = WorkSessionStatus::Running;
+                session.current_step_label = Some(format!("Detected {} file changes", count));
+            }
+            RuntimeEvent::ValidationRunning => {
+                session.status = WorkSessionStatus::Running;
+                session.current_step_label = Some("Running validation".to_string());
+                session.step_index = Some(3);
+                session.step_total = Some(3);
+                session.validation_summary = Some("running".to_string());
+            }
+            RuntimeEvent::ValidationResult { decision, message } => {
+                let accepted = decision == "accept";
+                session.validation_summary = Some(if message.trim().is_empty() {
+                    if accepted { "passed" } else { "failed" }.to_string()
+                } else {
+                    message.clone()
+                });
+                session.status = if accepted {
+                    WorkSessionStatus::WaitingForReview
+                } else {
+                    WorkSessionStatus::Blocked
+                };
+                session.current_step_label = Some(format!("Validation {}", decision));
+                session.next_action = Some(if accepted {
+                    "Review the generated diff/report.".to_string()
+                } else {
+                    "Fix the validation failure through the active chain.".to_string()
+                });
+            }
+            RuntimeEvent::ValidationStage {
+                stage,
+                status,
+                summary,
+                ..
+            } => {
+                session.current_step_label = Some(format!("Validation stage: {}", stage));
+                session.validation_summary = Some(
+                    summary
+                        .clone()
+                        .unwrap_or_else(|| format!("{} {:?}", stage, status)),
+                );
+                if matches!(status, ValidationStageStatus::Failed) {
+                    session.status = WorkSessionStatus::Blocked;
+                }
+            }
+            RuntimeEvent::StateCommitting { files_written } => {
+                for path in files_written {
+                    if !session.changed_files.contains(path) {
+                        session.changed_files.push(path.clone());
+                    }
+                }
+                session.current_step_label = Some("Committing file writes".to_string());
+            }
+            RuntimeEvent::Completion { reason } => {
+                session.current_step_label = Some("Completion gate accepted".to_string());
+                session.last_user_facing_summary = Some(reason.clone());
+                session.next_action =
+                    Some("Review final validation and changed files.".to_string());
+            }
+            RuntimeEvent::Failure { reason, .. } => {
+                session.status = WorkSessionStatus::Failed;
+                session.current_step_label = Some("Execution failed".to_string());
+                session.next_action = Some(reason.clone());
+            }
+            RuntimeEvent::RepairLoop {
+                attempt,
+                max,
+                reason,
+            } => {
+                session.status = WorkSessionStatus::Running;
+                session.current_step_label = Some(format!("Repair loop {}/{}", attempt, max));
+                session.next_action = Some(reason.clone());
+            }
+            RuntimeEvent::Finished { success, error, .. } => {
+                session.status = if *success {
+                    if session.disposable_workspace_used {
+                        WorkSessionStatus::WaitingForReview
+                    } else {
+                        WorkSessionStatus::Completed
+                    }
+                } else {
+                    WorkSessionStatus::Failed
+                };
+                session.current_step_label = Some(if *success {
+                    "Done".to_string()
+                } else {
+                    "Failed".to_string()
+                });
+                if *success && session.disposable_workspace_used {
+                    session.promotion_report_status =
+                        Some("report-only, waiting for review".to_string());
+                    session.next_action = Some("Review the generated diff/report.".to_string());
+                    session.source_repo_changed.get_or_insert(false);
+                } else if *success {
+                    session.completed_at = Some(Local::now());
+                    session.next_action = Some("Task complete.".to_string());
+                } else {
+                    session.next_action = error.clone();
+                }
+            }
+            RuntimeEvent::BrowserPreview { .. }
+            | RuntimeEvent::PlannerOutput { .. }
+            | RuntimeEvent::ProtocolValidation { .. }
+            | RuntimeEvent::ContextAssembly { .. } => {}
+        }
+
+        session.updated_at = Local::now();
+        self.last_updated = Local::now();
     }
 
     /// Clear checkpoint for active chain
@@ -2772,6 +3266,11 @@ impl PersistentState {
             ExecutionStateStore {
                 version: "1.0".to_string(),
                 last_updated: Local::now(),
+                active_chain_id: None,
+                chains: vec![],
+                work_sessions: vec![],
+                active_work_session_id: None,
+                chain_policy: ChainPolicy::default(),
                 last_model_status: None,
             },
         )
@@ -2785,12 +3284,14 @@ impl PersistentState {
                 .max(execution.last_updated),
             active_repo: projects.active_repo,
             active_conversation: chats.active_conversation,
-            active_chain_id: None,
+            active_chain_id: execution.active_chain_id,
             recent_repos: projects.recent_repos,
             conversations: chats.conversations,
-            chains: vec![],
+            chains: execution.chains,
+            work_sessions: execution.work_sessions,
+            active_work_session_id: execution.active_work_session_id,
             last_model_status: execution.last_model_status,
-            chain_policy: ChainPolicy::default(),
+            chain_policy: execution.chain_policy,
             // V2.4: Initialize projects from legacy data
             projects: vec![],
             active_project_id: None,
@@ -2825,6 +3326,11 @@ impl PersistentState {
         let execution = ExecutionStateStore {
             version: state.version.clone(),
             last_updated: state.last_updated,
+            active_chain_id: state.active_chain_id.clone(),
+            chains: state.chains.clone(),
+            work_sessions: state.work_sessions.clone(),
+            active_work_session_id: state.active_work_session_id.clone(),
+            chain_policy: state.chain_policy.clone(),
             last_model_status: state.last_model_status.clone(),
         };
         (projects, chats, execution)
@@ -3000,6 +3506,56 @@ impl PersistentState {
 impl Default for PersistentState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn changed_files_from_chain(chain: &PersistentChain) -> Vec<String> {
+    let mut files = Vec::new();
+    for path in chain.steps.iter().flat_map(|step| {
+        step.execution_results
+            .iter()
+            .flat_map(|capture| capture.affected_paths.clone())
+    }) {
+        if !files.contains(&path) {
+            files.push(path);
+        }
+    }
+    files
+}
+
+fn validation_summary_from_chain(chain: &PersistentChain) -> Option<String> {
+    if chain
+        .steps
+        .iter()
+        .any(|step| step.validation_passed == Some(false))
+    {
+        Some("failed".to_string())
+    } else if chain
+        .steps
+        .iter()
+        .any(|step| step.validation_passed == Some(true))
+    {
+        Some("passed".to_string())
+    } else {
+        None
+    }
+}
+
+fn next_action_from_chain(chain: &PersistentChain) -> Option<String> {
+    match chain.status {
+        ChainLifecycleStatus::Draft | ChainLifecycleStatus::Ready => {
+            Some("Resume the chain through the existing execution engine.".to_string())
+        }
+        ChainLifecycleStatus::Running => Some("Continue the active chain.".to_string()),
+        ChainLifecycleStatus::WaitingForApproval => {
+            Some("Review and approve or deny the pending checkpoint.".to_string())
+        }
+        ChainLifecycleStatus::Halted => Some("Say \"continue\" to resume.".to_string()),
+        ChainLifecycleStatus::Failed => {
+            Some("Say \"fix that\" to repair from the failure context.".to_string())
+        }
+        ChainLifecycleStatus::Complete => Some("Task complete.".to_string()),
+        ChainLifecycleStatus::Archived => Some("This work session is archived.".to_string()),
     }
 }
 
@@ -3706,6 +4262,144 @@ mod checkpoint_tests {
             git_grounding: None,
             audit_log,
         }
+    }
+
+    #[test]
+    fn old_state_without_work_sessions_loads_with_defaults() {
+        let json = format!(
+            r#"{{
+                "version":"1.0",
+                "last_updated":"{}",
+                "active_repo":null,
+                "active_conversation":null,
+                "active_chain_id":null,
+                "recent_repos":[],
+                "conversations":[],
+                "chains":[],
+                "last_model_status":null,
+                "projects":[],
+                "active_project_id":null
+            }}"#,
+            Local::now().to_rfc3339()
+        );
+
+        let state: PersistentState = serde_json::from_str(&json).unwrap();
+        assert!(state.work_sessions.is_empty());
+        assert!(state.active_work_session_id.is_none());
+    }
+
+    #[test]
+    fn work_session_serializes_active_id_and_archive_state() {
+        let mut state = PersistentState::new();
+        state.active_repo = Some("/repo".to_string());
+        let id = state
+            .create_work_session("Fix warnings", "FixFailure")
+            .id
+            .clone();
+        state.archive_work_session(&id).unwrap();
+
+        let roundtrip: PersistentState =
+            serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+        let session = roundtrip
+            .work_sessions
+            .iter()
+            .find(|session| session.id == id)
+            .unwrap();
+        assert!(session.archived);
+        assert_eq!(session.status, WorkSessionStatus::Archived);
+        assert!(roundtrip.active_work_session_id.is_none());
+    }
+
+    #[test]
+    fn completed_work_session_is_not_resumable() {
+        let mut session =
+            PersistentWorkSession::new("Clean up repository", "RepoCleanup", None, None, None);
+        session.status = WorkSessionStatus::Completed;
+        assert!(!session.is_resumable());
+    }
+
+    #[test]
+    fn update_work_session_from_chain_uses_chain_as_canonical_summary() {
+        let mut state = PersistentState::new();
+        let mut chain = test_chain(crate::state::AuditLog::new());
+        chain.id = "chain-1".to_string();
+        chain.objective = "Audit docs".to_string();
+        chain.steps[0]
+            .execution_results
+            .push(ExecutionResultCapture {
+                attempt: 1,
+                result_class: ExecutionResultClass::Success,
+                stdout: String::new(),
+                stderr: String::new(),
+                exit_code: Some(0),
+                test_results: None,
+                error_message: None,
+                failure_reason: None,
+                affected_paths: vec!["README.md".to_string()],
+                captured_at: Local::now(),
+                generated_retry_step_id: None,
+            });
+        state.chains.push(chain);
+        state.active_chain_id = Some("chain-1".to_string());
+        state.create_work_session("placeholder", "AuditDocs");
+
+        state.update_work_session_from_chain("chain-1");
+        let session = state.active_work_session().unwrap();
+        assert_eq!(session.active_chain_id.as_deref(), Some("chain-1"));
+        assert_eq!(session.current_step_label.as_deref(), Some("next"));
+        assert_eq!(session.changed_files, vec!["README.md".to_string()]);
+        assert_eq!(session.validation_summary.as_deref(), Some("passed"));
+    }
+
+    #[test]
+    fn missing_chain_marks_work_session_blocked() {
+        let mut state = PersistentState::new();
+        state.create_work_session("Fix warnings", "FixFailure");
+        state.active_work_session_mut().unwrap().active_chain_id = Some("missing".to_string());
+
+        state.update_work_session_from_chain("missing");
+        let session = state.active_work_session().unwrap();
+        assert_eq!(session.status, WorkSessionStatus::Blocked);
+        assert!(session.next_action.as_deref().unwrap().contains("missing"));
+    }
+
+    #[test]
+    fn validation_runtime_events_update_work_session_summary() {
+        let mut state = PersistentState::new();
+        state.create_work_session("Run tests and fix failures", "RunValidation");
+
+        state.update_work_session_from_runtime_event(&RuntimeEvent::ValidationResult {
+            decision: "reject".to_string(),
+            message: "tests failed".to_string(),
+        });
+
+        let session = state.active_work_session().unwrap();
+        assert_eq!(session.status, WorkSessionStatus::Blocked);
+        assert_eq!(session.validation_summary.as_deref(), Some("tests failed"));
+    }
+
+    #[test]
+    fn disposable_finished_success_waits_for_report_review() {
+        let mut state = PersistentState::new();
+        state.create_work_session("Clean up repository", "RepoCleanup");
+        state
+            .active_work_session_mut()
+            .unwrap()
+            .disposable_workspace_used = true;
+
+        state.update_work_session_from_runtime_event(&RuntimeEvent::Finished {
+            success: true,
+            iterations: 2,
+            error: None,
+        });
+
+        let session = state.active_work_session().unwrap();
+        assert_eq!(session.status, WorkSessionStatus::WaitingForReview);
+        assert_eq!(session.source_repo_changed, Some(false));
+        assert_eq!(
+            session.promotion_report_status.as_deref(),
+            Some("report-only, waiting for review")
+        );
     }
 
     fn append_transition(

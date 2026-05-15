@@ -22,11 +22,12 @@ Rasputin is a local terminal-first coding agent that runs in your terminal, conn
 - **Fail-closed validation** across format → lint → build → test stages ✓
 - **Audit-grounded execution timeline** in inspector with full traceability ✓
 - Stage-oriented runtime surfaces in the inspector ✓
+- Durable Normal Mode Work Sessions that persist objective, current step, validation summary, changed-file count, disposable-workspace/report status, and next action across restarts ✓
 
 **Normal Mode Usage**:
 Natural language is the primary Normal Mode interface. Type the outcome directly: `build me a SaaS for gym clients`, `clean up this repo`, `fix the warnings`, `run the tests and fix what breaks`, `show me the plan`, or `continue where you left off`. Rasputin wraps task-like input in a Work Session: it classifies the intent, stages a plan when work is broad, uses chain context for follow-ups, prefers disposable worktrees for broad edits, validates before reporting success, and stops for confirmation when risk requires it.
 
-Slash commands remain available for Operator Mode and precision control. Work Sessions are a Normal Mode wrapper around existing chains, validation, and disposable workspace behavior. Natural language does not bypass validation gates, chain policy, approval checks, disposable-workspace behavior, or destructive-command protections.
+Slash commands remain available for Operator Mode and precision control. Work Sessions are Normal Mode's user-facing continuity layer: they summarize and point to active repo, conversation, chain, validation, disposable-workspace report status, changed files, and next action. Chains remain the execution truth, and audit/replay/checkpoint records remain the canonical runtime truth. Work Sessions do not bypass validation gates, read-before-write, repo_boundary_only, disposable workspace, local-only Ollama, chain policy, approval checks, or destructive-command protections.
 
 **What You Don't Get**:
 - Unbounded background autonomy

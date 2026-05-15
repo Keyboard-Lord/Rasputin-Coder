@@ -41,7 +41,7 @@ flowchart TD
     B -->|Question| C[Plain chat]
     B -->|Show plan/status/stop| D[Existing command handler]
     B -->|Continue/follow-up| E{Active chain context?}
-    E -->|Yes| F[Resolve working memory]
+    E -->|Yes| F[Resolve active Work Session, chain, or working memory]
     E -->|No| G[Explain no active work]
     B -->|Broad work| H[Create Work Session and stage goal plan]
     H --> I[Preview risk and wait for confirmation]
@@ -63,6 +63,15 @@ Examples:
 Natural language is the primary Normal Mode interface, but it does not bypass risk preview, confirmation, chain policy, validation gates, or destructive-command protections. Broad or dangerous work may still require preview or confirmation. Disposable workspace protects the source workspace by executing in a temporary git worktree and producing a promotion report, but it is not a true OS/container sandbox.
 
 Normal Mode renders Work Session status in user-facing terms: what Rasputin is doing, current step, validation result, source repo change status, workspace mode, changed file count, and next suggested action. Operator Mode preserves the technical chain, audit, checkpoint, and worker details.
+
+Work Session restart continuity:
+1. Starting task-like natural-language work creates or updates a persistent Work Session.
+2. The Work Session stores a link to the active chain when a chain exists.
+3. Runtime events update summary fields such as current step, validation summary, changed files, report-only promotion status, and next action.
+4. On restart, `summarize current work` renders the active Work Session and reconciles through the linked chain where possible.
+5. `continue where you left off` prefers the active Work Session, then active chain, then recent resumable chain/working-memory context.
+6. Completed or archived Work Sessions are listed for context but are not resumed blindly.
+7. Missing chains, repo mismatches, or missing source workspaces block continuation with a clear message rather than inventing execution state.
 
 ## Autonomous Goal And Forge Task Workflow
 

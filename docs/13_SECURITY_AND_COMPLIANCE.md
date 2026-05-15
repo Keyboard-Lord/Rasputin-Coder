@@ -17,13 +17,14 @@
 
 ### 0. Natural-Language Routing Is Not a Safety Bypass
 
-Natural language is the primary Normal Mode interface. Normal Mode accepts phrases such as "clean up this repo", "fix the warnings", "show me the plan", and "continue where you left off". These phrases become Work Sessions routed to existing command, goal, chain, validation, disposable workspace, and stop workflows. The natural-language layer does not execute privileged work on its own.
+Natural language is the primary Normal Mode interface. Normal Mode accepts phrases such as "clean up this repo", "fix the warnings", "show me the plan", and "continue where you left off". These phrases become Work Sessions routed to existing command, goal, chain, validation, disposable workspace, and stop workflows. Work Sessions are persisted summaries and navigation records; they do not execute privileged work on their own and they do not replace chains, audit/replay/checkpoint, runtime events, or validation state as canonical execution truth.
 
 Safety invariants still apply:
 - Broad repository changes require a staged plan and may require confirmation.
 - Dangerous or destructive wording blocks or requires explicit operator action.
 - Follow-ups require active chain or working-memory context.
 - Disposable workspace behavior remains report-only until explicit promotion exists.
+- repo_boundary_only, read-before-write, validation gates, and local-only Ollama remain enforced.
 - Validation failure halts or repairs within chain policy; it does not invent success.
 
 ### 1. Bounded Execution

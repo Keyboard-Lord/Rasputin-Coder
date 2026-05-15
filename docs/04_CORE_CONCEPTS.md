@@ -24,6 +24,8 @@ The intent layer only chooses the route. Execution still flows through the same 
 
 Slash commands remain canonical Operator Mode controls for precision and audit work.
 
+Work Sessions are persisted Normal Mode continuity records, not authoritative execution state. A Work Session can store objective, intent class, repo path, conversation ID, linked chain ID, status, current step label, validation summary, changed files, disposable-workspace/report-only status, source-repo change status, and next action. It may summarize and navigate to canonical truth, but chains remain the execution truth and audit/replay/checkpoint remain canonical runtime truth. UI surfaces must render from those truth layers instead of inventing independent success or failure.
+
 | Intent | Examples | Route | Safety posture |
 |--------|----------|-------|----------------|
 | ChatQuestion | `what is Rust ownership?` | Plain chat | No mutation |
@@ -41,6 +43,7 @@ Slash commands remain canonical Operator Mode controls for precision and audit w
 | **Rasputin Session** | Long-lived | Product session with chat history, repos, settings |
 | **Forge Session** | Per-task | Worker session for single bounded execution |
 | **Conversation** | Persistent | Chat thread with messages, archived status |
+| **Work Session** | Persistent | Normal Mode continuity summary pointing to repo, conversation, and chain truth |
 | **Task** | Bounded | One Forge execution with max iterations |
 | **Chain** | Persistent | Multi-step objective with step tracking |
 

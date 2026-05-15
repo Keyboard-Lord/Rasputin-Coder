@@ -25,10 +25,66 @@ struct PersistentState {
     recent_repos: Vec<RecentRepo>,
     conversations: Vec<PersistentConversation>,
     chains: Vec<PersistentChain>,        // Chain registry (Phase B)
+    work_sessions: Vec<PersistentWorkSession>,
+    active_work_session_id: Option<String>,
     last_model_status: Option<ModelStatus>,
     chain_policy: ChainPolicy,           // Execution constraints (Phase B)
 }
 ```
+
+### PersistentWorkSession
+
+Work Sessions are Normal Mode's user-facing continuity layer. They persist summary and navigation state across restarts, but they do not replace chains, audit, replay, checkpoint, runtime events, or validation state as execution truth.
+
+```rust
+struct PersistentWorkSession {
+    id: String,
+    objective: String,
+    intent_class: String,
+    repo_path: Option<String>,
+    conversation_id: Option<String>,
+    active_chain_id: Option<String>,
+    status: WorkSessionStatus,
+    current_step_label: Option<String>,
+    step_index: Option<u32>,
+    step_total: Option<u32>,
+    execution_mode: Option<String>,
+    workspace_mode: Option<String>,
+    disposable_workspace_used: bool,
+    source_repo_changed: Option<bool>,
+    changed_files: Vec<String>,
+    validation_summary: Option<String>,
+    promotion_report_status: Option<String>,
+    next_action: Option<String>,
+    last_user_facing_summary: Option<String>,
+    created_at: DateTime<Local>,
+    updated_at: DateTime<Local>,
+    completed_at: Option<DateTime<Local>>,
+    archived: bool,
+    schema_version: u32,
+}
+```
+
+```rust
+enum WorkSessionStatus {
+    Planned,
+    Running,
+    WaitingForReview,
+    WaitingForApproval,
+    Blocked,
+    Failed,
+    Completed,
+    Cancelled,
+    Archived,
+}
+```
+
+Consistency rules:
+- Work Session may reference a chain; the chain remains canonical for step execution.
+- If a Work Session points to a missing chain, Normal Mode degrades gracefully and Operator Mode exposes the inconsistency.
+- If the linked chain is terminal, the Work Session reconciles to terminal status.
+- Completed and archived Work Sessions are not resumed blindly.
+- Repo mismatch blocks continuation until the user switches repos or starts a new goal.
 
 ### RecentRepo
 

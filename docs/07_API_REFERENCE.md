@@ -17,7 +17,9 @@ Natural language is the primary Normal Mode interface: type the outcome directly
 | `stop` | Stop work | `/stop` equivalent |
 | `what is Rust ownership?` | Chat question | Plain chat; no mutation |
 
-Natural language is not a bypass. Broad or risky work can still require preview or confirmation, dangerous actions can still block, and validation/chain/disposable-workspace policy remains enforced. Disposable workspace is source-workspace protection, not a true OS/container sandbox.
+Natural language is not a bypass. Broad or risky work can still require preview or confirmation, dangerous actions can still block, and validation, read-before-write, repo_boundary_only, chain, local-only Ollama, and disposable-workspace policy remains enforced. Disposable workspace is source-workspace protection, not a true OS/container sandbox, and promotion remains report-only.
+
+Normal Mode status phrases such as `summarize current work`, `what are you doing`, `show me what changed`, `what happened last time`, and `show current work session` render durable Work Session state when available. Normal Mode hides IDs by default. Operator Mode chain/status output includes Work Session ID, linked chain ID, repo path, conversation ID, status enum, schema version, timestamps, consistency with the linked chain, and the canonical state source.
 
 ## Slash Commands (User Interface)
 

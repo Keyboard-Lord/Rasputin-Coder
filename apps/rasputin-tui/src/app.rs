@@ -397,6 +397,9 @@ impl NaturalLanguageIntent {
             "give me a summary",
             "show me what changed",
             "show me what you changed",
+            "show current work session",
+            "what are you doing",
+            "what happened last time",
             "what changed",
         ]) {
             return Self::SummarizeWork;
@@ -537,6 +540,37 @@ fn normalize_natural_input(input: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn work_session_objective(
+    intent: NaturalLanguageIntent,
+    original_input: &str,
+    routed_statement: &str,
+) -> String {
+    match intent {
+        NaturalLanguageIntent::FixFailure => "Fix warnings".to_string(),
+        NaturalLanguageIntent::RepoCleanup => "Clean up repository".to_string(),
+        NaturalLanguageIntent::RunValidation => "Run tests and fix failures".to_string(),
+        NaturalLanguageIntent::AuditDocs => "Audit docs".to_string(),
+        NaturalLanguageIntent::ProductionReadiness => "Assess production readiness".to_string(),
+        NaturalLanguageIntent::ReadOnlyAnalysis => "Analyze repository".to_string(),
+        NaturalLanguageIntent::GenerateApp
+        | NaturalLanguageIntent::BuildFeature
+        | NaturalLanguageIntent::Unknown => {
+            let source = if original_input.trim().is_empty() {
+                routed_statement
+            } else {
+                original_input
+            };
+            crate::text::truncate_chars(source.trim(), 96)
+        }
+        NaturalLanguageIntent::ChatQuestion
+        | NaturalLanguageIntent::ContinueWork
+        | NaturalLanguageIntent::ShowPlan
+        | NaturalLanguageIntent::ShowStatus
+        | NaturalLanguageIntent::StopWork
+        | NaturalLanguageIntent::SummarizeWork => crate::text::truncate_chars(original_input, 96),
+    }
 }
 
 fn is_chat_question(normalized: &str) -> bool {
@@ -2926,6 +2960,17 @@ impl App {
             }
 
             Command::ChainStatus { chain_id } => {
+                if matches!(self.experience_mode, ExperienceMode::Normal) && chain_id.is_none() {
+                    if let Some(summary) = self.render_active_work_session_summary() {
+                        self.push_system_notice(&summary);
+                    } else {
+                        let msg = self.render_recent_work_sessions();
+                        self.push_system_notice(&msg);
+                    }
+                    self.persist().await;
+                    return Ok(false);
+                }
+
                 let id = chain_id
                     .as_deref()
                     .or(self.persistence.active_chain_id.as_deref())
@@ -3173,6 +3218,23 @@ impl App {
                         chain.updated_at.format("%Y-%m-%d %H:%M"),
                         recovery_status
                     );
+
+                    if let Some(session) = self.persistence.active_work_session() {
+                        let consistency = if session.active_chain_id.as_deref() == Some(&chain.id) {
+                            "consistent"
+                        } else {
+                            "mismatch"
+                        };
+                        msg.push_str(&format!(
+                            "\nWorkSession ID: {}\nWorkSession status: {:?}\nWorkSession schema: {}\nWorkSession repo: {}\nWorkSession conversation: {}\nLinked chain consistency: {}\nCanonical state source: chains + audit/replay/checkpoint + runtime validation",
+                            session.id,
+                            session.status,
+                            session.schema_version,
+                            session.repo_path.as_deref().unwrap_or("none"),
+                            session.conversation_id.as_deref().unwrap_or("none"),
+                            consistency
+                        ));
+                    }
 
                     // Show next step if ready
                     if let (Some(step_id), Some(desc)) =
@@ -3668,6 +3730,17 @@ impl App {
                     self.push_system_notice(&format!("Chain '{}' not found", id));
                     return Ok(false);
                 };
+                if self.persistence.active_work_session_id.is_none() {
+                    self.persistence
+                        .create_work_session(chain.objective.clone(), "reconstructed_from_chain");
+                }
+                if let Some(session) = self.persistence.active_work_session_mut() {
+                    session.active_chain_id = Some(id.clone());
+                    session.status = crate::persistence::WorkSessionStatus::Running;
+                    session.next_action =
+                        Some("Resuming through the active chain/runtime machinery.".to_string());
+                    session.updated_at = chrono::Local::now();
+                }
 
                 // V1.6 CHECKPOINT: Attempt validated checkpoint resume first.
                 // Existing execution progress must resume from an audit-grounded checkpoint.
@@ -4114,6 +4187,12 @@ impl App {
             Command::Stop => {
                 self.emit_event("cmd", "/stop");
                 self.record_last_action("Stop execution");
+                if let Some(session) = self.persistence.active_work_session_mut() {
+                    session.status = crate::persistence::WorkSessionStatus::Cancelled;
+                    session.completed_at = Some(chrono::Local::now());
+                    session.next_action = Some("Work was stopped by the user.".to_string());
+                    session.updated_at = chrono::Local::now();
+                }
 
                 // V1.5: Preserve prepared action context before clearing
                 if let Some(confirmation) = self.pending_confirmation.take() {
@@ -6345,6 +6424,7 @@ impl App {
 
                 // Add user message to UI (after classification, before execution)
                 self.append_user_message(&content);
+                self.start_or_update_work_session(intent, &content, &statement);
 
                 if policy.disposable_workspace_preferred {
                     self.push_system_notice(
@@ -6364,6 +6444,7 @@ impl App {
                 if should_quit {
                     return Ok(true);
                 }
+                self.sync_active_work_session_from_active_chain();
 
                 if self.goal_manager.active_goal().is_some_and(|goal| {
                     matches!(goal.status, crate::guidance::GoalStatus::Proposed)
@@ -6387,6 +6468,12 @@ impl App {
                     &format!("follow-up resolved: '{}' → task execution", original_input),
                 );
                 self.append_user_message(&original_input);
+                if let Some(session) = self.persistence.active_work_session_mut() {
+                    session.status = crate::persistence::WorkSessionStatus::Running;
+                    session.next_action =
+                        Some("Continuing through the active chain/runtime machinery.".to_string());
+                    session.updated_at = chrono::Local::now();
+                }
 
                 // Add continuity notice showing what we're continuing
                 let continuity_notice = format!(
@@ -6592,16 +6679,54 @@ impl App {
             }
         }
 
-        // CODEX-LIKE CONTINUITY: Check for follow-up intent against working memory
-        let follow_up_intent =
-            crate::working_memory::WorkingMemory::detect_follow_up_intent(content);
-        if !matches!(
-            follow_up_intent,
-            crate::working_memory::FollowUpIntent::NewTask
-        ) {
-            // Try to resolve the follow-up against current working memory
+        if matches!(natural_intent, NaturalLanguageIntent::ContinueWork) {
+            if let Some(session) = self.persistence.active_work_session() {
+                if !session.is_resumable() {
+                    return InputRouting::ContinueWithoutContext {
+                        original_input: content.to_string(),
+                    };
+                }
+                if let (Some(session_repo), Some(active_repo)) = (
+                    session.repo_path.as_deref(),
+                    self.persistence.active_repo.as_deref(),
+                ) && session_repo != active_repo
+                {
+                    return InputRouting::NaturalBlocked {
+                        intent: natural_intent,
+                        reason: "The active Work Session belongs to a different repo. Open that repo or start a new goal before continuing.",
+                    };
+                }
+                if let Some(chain_id) = session.active_chain_id.clone() {
+                    if self.persistence.get_chain(&chain_id).is_some() {
+                        return InputRouting::NaturalCommand {
+                            intent: natural_intent,
+                            command: Command::ChainResume {
+                                chain_id,
+                                force: false,
+                            },
+                        };
+                    }
+                    return InputRouting::NaturalBlocked {
+                        intent: natural_intent,
+                        reason: "The active Work Session points to a missing chain. I can summarize it, but I can’t continue without canonical chain state.",
+                    };
+                }
+            }
+            if let Some(chain_id) = self.persistence.active_chain_id.clone()
+                && self.persistence.get_chain(&chain_id).is_some()
+            {
+                return InputRouting::NaturalCommand {
+                    intent: natural_intent,
+                    command: Command::ChainResume {
+                        chain_id,
+                        force: false,
+                    },
+                };
+            }
             if let Some(memory) = crate::working_memory::compute_working_memory(&self.persistence) {
-                if let Some(resolved_task) = memory.resolve_follow_up(follow_up_intent, content) {
+                if let Some(resolved_task) = memory
+                    .resolve_follow_up(crate::working_memory::FollowUpIntent::Continue, content)
+                {
                     return InputRouting::FollowUp {
                         resolved_task,
                         original_input: content.to_string(),
@@ -6612,11 +6737,17 @@ impl App {
                 original_input: content.to_string(),
             };
         }
-        if matches!(natural_intent, NaturalLanguageIntent::ContinueWork) {
+
+        // CODEX-LIKE CONTINUITY: Check for follow-up intent against working memory
+        let follow_up_intent =
+            crate::working_memory::WorkingMemory::detect_follow_up_intent(content);
+        if !matches!(
+            follow_up_intent,
+            crate::working_memory::FollowUpIntent::NewTask
+        ) {
+            // Try to resolve the follow-up against current working memory
             if let Some(memory) = crate::working_memory::compute_working_memory(&self.persistence) {
-                if let Some(resolved_task) = memory
-                    .resolve_follow_up(crate::working_memory::FollowUpIntent::Continue, content)
-                {
+                if let Some(resolved_task) = memory.resolve_follow_up(follow_up_intent, content) {
                     return InputRouting::FollowUp {
                         resolved_task,
                         original_input: content.to_string(),
@@ -6666,6 +6797,148 @@ impl App {
 
         // Default: conversational chat
         InputRouting::Chat
+    }
+
+    fn start_or_update_work_session(
+        &mut self,
+        intent: NaturalLanguageIntent,
+        original_input: &str,
+        routed_statement: &str,
+    ) {
+        let objective = work_session_objective(intent, original_input, routed_statement);
+        let intent_class = format!("{:?}", intent);
+        let should_update_active = self
+            .persistence
+            .active_work_session()
+            .map(|session| session.is_resumable() && session.active_chain_id.is_none())
+            .unwrap_or(false);
+
+        if should_update_active {
+            let active_repo = self.persistence.active_repo.clone();
+            let active_conversation = self.persistence.active_conversation.clone();
+            if let Some(session) = self.persistence.active_work_session_mut() {
+                session.objective = objective;
+                session.intent_class = intent_class;
+                session.repo_path = active_repo;
+                session.conversation_id = active_conversation;
+                session.status = crate::persistence::WorkSessionStatus::Planned;
+                session.updated_at = chrono::Local::now();
+            }
+        } else {
+            self.persistence
+                .create_work_session(objective, intent_class);
+        }
+
+        if let Some(session) = self.persistence.active_work_session_mut() {
+            session.execution_mode = Some(format!("{:?}", self.state.execution.mode));
+            if self.state.repo.disposable_workspace_backend.is_some() {
+                session.workspace_mode = Some("disposable worktree".to_string());
+                session.disposable_workspace_used = true;
+                session.source_repo_changed = Some(false);
+                session.promotion_report_status = Some("report-only".to_string());
+            } else {
+                session.workspace_mode = Some("source workspace".to_string());
+            }
+            session.next_action = Some("Review the generated plan before execution.".to_string());
+        }
+    }
+
+    fn sync_active_work_session_from_active_chain(&mut self) {
+        if let Some(chain_id) = self.persistence.active_chain_id.clone() {
+            self.persistence.update_work_session_from_chain(&chain_id);
+        }
+    }
+
+    fn render_active_work_session_summary(&mut self) -> Option<String> {
+        if self.persistence.active_work_session_id.is_none() {
+            if let Some(chain_id) = self.persistence.active_chain_id.clone() {
+                self.persistence.update_work_session_from_chain(&chain_id);
+            }
+        }
+        let active_id = self.persistence.active_work_session_id.clone()?;
+        let active_chain_id = self
+            .persistence
+            .active_work_session()
+            .and_then(|session| session.active_chain_id.clone());
+        if let Some(chain_id) = active_chain_id.as_deref() {
+            self.persistence.update_work_session_from_chain(chain_id);
+        }
+
+        let session = self
+            .persistence
+            .work_sessions
+            .iter()
+            .find(|session| session.id == active_id)?;
+        let chain_missing = session
+            .active_chain_id
+            .as_deref()
+            .is_some_and(|id| self.persistence.get_chain(id).is_none());
+        let source_repo = match session.source_repo_changed {
+            Some(true) => "changed",
+            Some(false) => "unchanged",
+            None if session.disposable_workspace_used => "unchanged unless you promote the report",
+            None => "unknown",
+        };
+        let workspace =
+            session
+                .workspace_mode
+                .as_deref()
+                .unwrap_or(if session.disposable_workspace_used {
+                    "disposable worktree"
+                } else {
+                    "source workspace"
+                });
+        let validation = session
+            .validation_summary
+            .as_deref()
+            .unwrap_or("not run yet");
+        let step = session
+            .current_step_label
+            .as_deref()
+            .unwrap_or("No active step");
+        let next = if chain_missing {
+            "Linked chain is missing; choose a recent chain or start a new goal."
+        } else {
+            session
+                .next_action
+                .as_deref()
+                .unwrap_or("Review current state.")
+        };
+        let mut msg = format!(
+            "Work Session: {}\nStatus: {}\nStep: {}\nWorkspace: {}\nSource repo: {}\nChanged files: {}\nValidation: {}\nNext: {}",
+            session.objective,
+            session.status.user_label(),
+            step,
+            workspace,
+            source_repo,
+            session.changed_files.len(),
+            validation,
+            next
+        );
+        if chain_missing {
+            msg.push_str("\n\nNote: this Work Session points to a chain that is no longer present. The session is only continuity metadata; execution truth must come from a valid chain.");
+        }
+        Some(msg)
+    }
+
+    fn render_recent_work_sessions(&self) -> String {
+        let recent = self
+            .persistence
+            .find_recent_work_sessions(self.persistence.active_repo.as_deref());
+        if recent.is_empty() {
+            return "I don’t have an active work session. Start a new goal and I’ll keep the continuity record with it.".to_string();
+        }
+
+        let mut msg = "I don’t have an active work session. Recent sessions:".to_string();
+        for (index, session) in recent.into_iter().take(3).enumerate() {
+            msg.push_str(&format!(
+                "\n{}. {} - {}",
+                index + 1,
+                session.objective,
+                session.status.user_label()
+            ));
+        }
+        msg
     }
 
     /// Helper to append user message to UI (extracted for consistency)
@@ -11273,6 +11546,8 @@ impl App {
             let is_terminal_event = matches!(event, RuntimeEvent::Finished { .. });
             let formatted = format_forge_event(&event);
             self.apply_execution_event(&event);
+            self.persistence
+                .update_work_session_from_runtime_event(&event);
 
             if is_terminal_event {
                 self.seal_execution_run();
@@ -11338,6 +11613,9 @@ impl App {
 
             self.emit_event(&format!("runtime/{}", event_type), &formatted);
             self.update_active_run_card_from_event(&event, chat_line.clone());
+            if let Some(chain_id) = self.persistence.active_chain_id.clone() {
+                self.persistence.update_work_session_from_chain(&chain_id);
+            }
 
             // Buffer user-facing formatted output for final summary
             self.execution_output_buffer.push(chat_line);
@@ -12019,6 +12297,103 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn work_session_creation_excludes_chat_questions() {
+        let mut app = App::new().await;
+        app.persistence = crate::persistence::PersistentState::new();
+
+        let route = app.classify_input_intent("what is Rust ownership?");
+        assert!(matches!(route, InputRouting::Chat));
+        assert!(app.persistence.work_sessions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn natural_language_work_creates_durable_work_session_record() {
+        let mut app = App::new().await;
+        app.persistence = crate::persistence::PersistentState::new();
+
+        let intent = NaturalLanguageIntent::classify("fix the warnings");
+        let statement = intent.routed_statement("fix the warnings");
+        app.start_or_update_work_session(intent, "fix the warnings", &statement);
+
+        let session = app.persistence.active_work_session().unwrap();
+        assert_eq!(session.objective, "Fix warnings");
+        assert_eq!(session.intent_class, "FixFailure");
+        assert_eq!(
+            session.status,
+            crate::persistence::WorkSessionStatus::Planned
+        );
+    }
+
+    #[tokio::test]
+    async fn summarize_current_work_uses_active_work_session_and_hides_ids() {
+        let mut app = App::new().await;
+        app.persistence = crate::persistence::PersistentState::new();
+        app.persistence
+            .create_work_session("Clean up repository", "RepoCleanup");
+        {
+            let session = app.persistence.active_work_session_mut().unwrap();
+            session.status = crate::persistence::WorkSessionStatus::WaitingForReview;
+            session.workspace_mode = Some("disposable worktree".to_string());
+            session.disposable_workspace_used = true;
+            session.source_repo_changed = Some(false);
+            session.changed_files = vec!["README.md".to_string(), "docs/README.md".to_string()];
+            session.validation_summary = Some("passed".to_string());
+            session.next_action = Some("review the generated diff/report".to_string());
+        }
+
+        let summary = app.render_active_work_session_summary().unwrap();
+        assert!(summary.contains("Work Session: Clean up repository"));
+        assert!(summary.contains("Status: waiting for review"));
+        assert!(summary.contains("Changed files: 2"));
+        assert!(!summary.contains("worksession-"));
+    }
+
+    #[tokio::test]
+    async fn continue_where_left_off_prefers_active_work_session_chain() {
+        let mut app = App::new().await;
+        app.persistence = crate::persistence::PersistentState::new();
+        let chain_id = app
+            .persistence
+            .create_chain("Fix warnings", "Fix warnings")
+            .id
+            .clone();
+        app.persistence
+            .create_work_session("Fix warnings", "FixFailure");
+        app.persistence
+            .active_work_session_mut()
+            .unwrap()
+            .active_chain_id = Some(chain_id.clone());
+
+        let route = app.classify_input_intent("continue where you left off");
+        match route {
+            InputRouting::NaturalCommand {
+                command:
+                    Command::ChainResume {
+                        chain_id: routed, ..
+                    },
+                ..
+            } => assert_eq!(routed, chain_id),
+            other => panic!("expected active WorkSession chain resume, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn no_active_work_session_gives_recent_sessions_message() {
+        let mut app = App::new().await;
+        app.persistence = crate::persistence::PersistentState::new();
+        let id = app
+            .persistence
+            .create_work_session("Audit docs", "AuditDocs")
+            .id
+            .clone();
+        app.persistence.complete_work_session(&id).unwrap();
+
+        let msg = app.render_recent_work_sessions();
+        assert!(msg.contains("I don’t have an active work session"));
+        assert!(msg.contains("Audit docs - completed"));
+    }
+
+    #[tokio::test]
     async fn natural_language_show_plan_routes_to_plan_command() {
         let app = App::new().await;
         let route = app.classify_input_intent("show me the plan");
@@ -12035,6 +12410,7 @@ mod tests {
     #[tokio::test]
     async fn natural_language_continue_resolves_active_chain_context() {
         let mut app = App::new().await;
+        app.persistence = crate::persistence::PersistentState::new();
         let chain = app
             .persistence
             .create_chain("active work", "Build the billing dashboard")
@@ -12053,10 +12429,14 @@ mod tests {
         let route = app.classify_input_intent("continue where you left off");
 
         match route {
-            InputRouting::FollowUp { resolved_task, .. } => {
-                assert!(resolved_task.contains("Build the billing dashboard"));
-            }
-            other => panic!("expected follow-up route, got {:?}", other),
+            InputRouting::NaturalCommand {
+                command:
+                    Command::ChainResume {
+                        chain_id: routed, ..
+                    },
+                ..
+            } => assert_eq!(routed, chain_id),
+            other => panic!("expected chain resume route, got {:?}", other),
         }
     }
 
@@ -12065,6 +12445,8 @@ mod tests {
         let mut app = App::new().await;
         app.persistence.chains.clear();
         app.persistence.active_chain_id = None;
+        app.persistence.work_sessions.clear();
+        app.persistence.active_work_session_id = None;
 
         let route = app.classify_input_intent("continue");
 
@@ -12351,7 +12733,7 @@ mod tests {
         assert!(rendered.contains("Work Session: Clean up repo"));
         assert!(rendered.contains("Status: in progress"));
         assert!(rendered.contains("Source repo:"));
-        assert!(rendered.contains("Workspace mode:"));
+        assert!(rendered.contains("Workspace:"));
         assert!(rendered.contains("Changed files:"));
         assert!(!rendered.contains("ID:"));
         assert!(!rendered.contains("chain-operator-visible"));

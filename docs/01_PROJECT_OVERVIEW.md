@@ -55,7 +55,9 @@ Rasputin operates in two experience modes:
 
 **Design Philosophy**: Normal mode is "tell it what you want." Natural language is the primary Normal Mode interface. The router classifies phrases like "clean up this repo", "fix the warnings", "show me the plan", and "continue where you left off" into Work Sessions that wrap the same chains, validation, and disposable workspace behavior used by slash commands. Operator mode keeps slash commands and audit surfaces for precision. Natural language hides machinery; it does not remove validation, chain policy, risk preview, approval checks, or disposable-workspace protections.
 
-Work Sessions show a plain-language summary: objective, current step, validation result, whether the source repo changed, whether a disposable worktree was used, changed file count, and the next suggested action. Operator Mode still exposes technical chain IDs, audit IDs, checkpoint details, raw worker events, and command syntax.
+Work Sessions are Normal Mode's user-facing continuity layer. They persist the user's objective, current step label, validation summary, changed-file list, disposable-workspace/report-only status, source-repo change status, and next action across restarts. They are not a second execution engine: chains remain the execution truth, and audit/replay/checkpoint records remain canonical runtime truth. If a Work Session and its linked chain disagree, Rasputin prefers the canonical chain/runtime state and Operator Mode surfaces the inconsistency.
+
+Operator Mode still exposes technical Work Session IDs, chain IDs, audit IDs, checkpoint details, raw worker events, schema versions, and command syntax. Normal Mode hides IDs by default.
 
 ### Security Posture
 
@@ -157,6 +159,7 @@ This positions Rasputin as the self-hosted, privacy-preserving alternative to cl
 - `crates/forge-runtime` is the active bounded execution engine
 - Chain execution with multi-step task chains and validation gating
 - Natural-language task-like input routes into goal planning and bounded execution
+- Durable Work Session persistence for Normal Mode continuity after restart
 - Local coder-model goal planning with fallback to the deterministic heuristic planner
 - Checkpoints with validated state saved after each successful chain step
 - Guarded resume plus auto-resume for accepted goal chains
