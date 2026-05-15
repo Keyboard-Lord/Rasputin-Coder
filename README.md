@@ -24,9 +24,9 @@ Rasputin is a local terminal-first coding agent that runs in your terminal, conn
 - Stage-oriented runtime surfaces in the inspector ✓
 
 **Normal Mode Usage**:
-Type the outcome directly: `build me a SaaS for gym clients`, `clean up this repo`, `fix the warnings`, `run the tests and fix what breaks`, `show me the plan`, or `continue where you left off`. Rasputin classifies the request, stages a plan when work is broad, uses chain context for follow-ups, prefers disposable worktrees for broad edits, validates before reporting success, and stops for confirmation when risk requires it.
+Natural language is the primary Normal Mode interface. Type the outcome directly: `build me a SaaS for gym clients`, `clean up this repo`, `fix the warnings`, `run the tests and fix what breaks`, `show me the plan`, or `continue where you left off`. Rasputin wraps task-like input in a Work Session: it classifies the intent, stages a plan when work is broad, uses chain context for follow-ups, prefers disposable worktrees for broad edits, validates before reporting success, and stops for confirmation when risk requires it.
 
-Slash commands remain available for Operator Mode and precision control. Natural language does not bypass validation gates, chain policy, approval checks, disposable-workspace behavior, or destructive-command protections.
+Slash commands remain available for Operator Mode and precision control. Work Sessions are a Normal Mode wrapper around existing chains, validation, and disposable workspace behavior. Natural language does not bypass validation gates, chain policy, approval checks, disposable-workspace behavior, or destructive-command protections.
 
 **What You Don't Get**:
 - Unbounded background autonomy
@@ -125,7 +125,7 @@ The product has two distinct runtime layers that share a UI shell:
 1. **Rasputin Product State** — long-running TUI state (chat history, repos, preferences)
 2. **Forge Worker State** — per-task execution state (files read, mutations, validation)
 
-**User consequence**: Task-like plain text is treated as a goal, planned with the configured local coder model, confirmed automatically, and executed through a bounded chain. Question-like chat remains normal Ollama chat and does not mutate the previous Forge task's worker context.
+**User consequence**: Task-like plain text is treated as a Work Session, planned with the configured local coder model, staged for review when risk requires it, and executed through a bounded chain. Question-like chat remains normal Ollama chat and does not mutate the previous Forge task's worker context.
 
 This is **intentional**: autonomy is bounded by step limits, validation gates, approval checkpoints, and per-task worker processes. See [04_CORE_CONCEPTS.md](docs/04_CORE_CONCEPTS.md) and [14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md](docs/14_KNOWN_LIMITATIONS_AND_TRADEOFFS.md) for the full rationale.
 

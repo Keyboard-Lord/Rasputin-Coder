@@ -53,7 +53,9 @@ Rasputin operates in two experience modes:
 | **Normal** | Daily users | Manual toggle only | Human-readable: "Working...", "Step 2 of 5" | Natural-language control |
 | **Operator** | Debug/audit | Auto-shows on execution | Technical: Chain IDs, Git SHAs | Full mode toggle [CHAT][EDIT][TASK] |
 
-**Design Philosophy**: Normal mode is "tell it what you want." The router classifies phrases like "clean up this repo", "fix the warnings", "show me the plan", and "continue where you left off" into the same internal workflows used by slash commands. Operator mode keeps slash commands and audit surfaces for precision. Natural language hides machinery; it does not remove validation, chain policy, risk preview, approval checks, or disposable-workspace protections.
+**Design Philosophy**: Normal mode is "tell it what you want." Natural language is the primary Normal Mode interface. The router classifies phrases like "clean up this repo", "fix the warnings", "show me the plan", and "continue where you left off" into Work Sessions that wrap the same chains, validation, and disposable workspace behavior used by slash commands. Operator mode keeps slash commands and audit surfaces for precision. Natural language hides machinery; it does not remove validation, chain policy, risk preview, approval checks, or disposable-workspace protections.
+
+Work Sessions show a plain-language summary: objective, current step, validation result, whether the source repo changed, whether a disposable worktree was used, changed file count, and the next suggested action. Operator Mode still exposes technical chain IDs, audit IDs, checkpoint details, raw worker events, and command syntax.
 
 ### Security Posture
 
@@ -89,9 +91,9 @@ Rasputin is designed for developers who:
 
 # Inside the TUI
 create a Rust CLI that prints hello world
-# or explicitly:
+# or explicitly in Operator Mode:
 /goal create a Rust CLI that prints hello world
-/goal confirm                # Explicit acceptance; task-like plain text queues this automatically
+/goal confirm                # Explicit acceptance for the staged plan
 /plan                        # Show multi-step plan
 /preview                     # Forecast risks and preview execution
 /stop                        # Interrupt if needed

@@ -17,7 +17,7 @@
 
 ### 0. Natural-Language Routing Is Not a Safety Bypass
 
-Normal Mode accepts phrases such as "clean up this repo", "fix the warnings", "show me the plan", and "continue where you left off". These phrases are routed to existing command, goal, chain, validation, and stop workflows. The natural-language layer does not execute privileged work on its own.
+Natural language is the primary Normal Mode interface. Normal Mode accepts phrases such as "clean up this repo", "fix the warnings", "show me the plan", and "continue where you left off". These phrases become Work Sessions routed to existing command, goal, chain, validation, disposable workspace, and stop workflows. The natural-language layer does not execute privileged work on its own.
 
 Safety invariants still apply:
 - Broad repository changes require a staged plan and may require confirmation.

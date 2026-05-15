@@ -18,11 +18,21 @@ Rasputin implements a hierarchy of five authoritative truth layers. Each layer d
 
 ### Natural-Language Control Layer
 
-Normal Mode treats natural language as the primary control surface. Inputs are classified into intent classes such as chat question, read-only analysis, build feature, generate app, repo cleanup, fix failure, run validation, continue work, show plan, show status, stop work, summarize work, audit docs, and production readiness.
+Normal Mode treats natural language as the primary control surface. A task-like sentence becomes a **Work Session**, which is a Normal Mode wrapper around existing chains, validation, and disposable workspace behavior. Inputs are classified into intent classes such as chat question, read-only analysis, build feature, generate app, repo cleanup, fix failure, run validation, continue work, show plan, show status, stop work, summarize work, audit docs, and production readiness.
 
 The intent layer only chooses the route. Execution still flows through the same plan, preview, chain, disposable-worktree, validation, and reporting machinery used by slash commands. Broad edits require a staged plan and confirmation. Dangerous or destructive wording blocks or asks for explicit operator action. Follow-ups such as "continue where you left off" require active chain or working-memory context; without it, Rasputin reports that there is no active work to continue.
 
 Slash commands remain canonical Operator Mode controls for precision and audit work.
+
+| Intent | Examples | Route | Safety posture |
+|--------|----------|-------|----------------|
+| ChatQuestion | `what is Rust ownership?` | Plain chat | No mutation |
+| ShowStatus / ShowPlan / SummarizeWork | `show me the plan`, `summarize the work` | Existing status/plan handlers | Read-only |
+| ContinueWork | `continue where you left off` | Active chain or working memory | Requires active context |
+| StopWork | `stop` | Existing stop handler | Interrupt only |
+| RunValidation / FixFailure | `run tests and fix what breaks`, `fix the warnings` | Validation-first repair Work Session | Plan and validation required |
+| RepoCleanup / AuditDocs / ProductionReadiness | `clean up this repo`, `audit the docs`, `make this production ready` | Staged Work Session | Disposable worktree preferred, confirmation may be required |
+| BuildFeature / GenerateApp | `build billing`, `build me a SaaS starter` | Staged Work Session | Broad-work preview required |
 
 ### Session Types
 

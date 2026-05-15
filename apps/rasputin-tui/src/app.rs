@@ -163,58 +163,208 @@ struct NaturalIntentPolicy {
     confirmation_required: bool,
     disposable_workspace_preferred: bool,
     chain_context_required: bool,
+    creates_chain: bool,
+    internal_action: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WorkSessionIntentSpec {
+    intent: NaturalLanguageIntent,
+    triggers: &'static [&'static str],
+    examples: &'static [&'static str],
+    risk_level: NaturalRiskLevel,
+    needs_active_chain: bool,
+    creates_chain: bool,
+    prefers_disposable_workspace: bool,
+    confirmation_required: bool,
+    internal_action: &'static str,
 }
 
 impl NaturalLanguageIntent {
-    fn policy(self) -> NaturalIntentPolicy {
+    fn spec(self) -> WorkSessionIntentSpec {
         match self {
-            Self::ChatQuestion => NaturalIntentPolicy {
+            Self::ChatQuestion => WorkSessionIntentSpec {
+                intent: self,
+                triggers: &["what is", "how does", "why", "explain"],
+                examples: &["what is Rust ownership?"],
                 risk_level: NaturalRiskLevel::None,
+                needs_active_chain: false,
+                creates_chain: false,
+                prefers_disposable_workspace: false,
                 confirmation_required: false,
-                disposable_workspace_preferred: false,
-                chain_context_required: false,
+                internal_action: "chat",
             },
-            Self::ReadOnlyAnalysis | Self::ShowPlan | Self::ShowStatus | Self::SummarizeWork => {
-                NaturalIntentPolicy {
-                    risk_level: NaturalRiskLevel::Low,
-                    confirmation_required: false,
-                    disposable_workspace_preferred: false,
-                    chain_context_required: false,
-                }
-            }
-            Self::ContinueWork => NaturalIntentPolicy {
-                risk_level: NaturalRiskLevel::Medium,
-                confirmation_required: false,
-                disposable_workspace_preferred: false,
-                chain_context_required: true,
-            },
-            Self::StopWork => NaturalIntentPolicy {
+            Self::ShowStatus => WorkSessionIntentSpec {
+                intent: self,
+                triggers: &["show status", "status update", "where are we"],
+                examples: &["show status", "where are we?"],
                 risk_level: NaturalRiskLevel::Low,
+                needs_active_chain: false,
+                creates_chain: false,
+                prefers_disposable_workspace: false,
                 confirmation_required: false,
-                disposable_workspace_preferred: false,
-                chain_context_required: false,
+                internal_action: "/chain status",
             },
-            Self::FixFailure | Self::RunValidation | Self::AuditDocs => NaturalIntentPolicy {
+            Self::ShowPlan => WorkSessionIntentSpec {
+                intent: self,
+                triggers: &["show me the plan", "current plan", "what is the plan"],
+                examples: &["show me the plan"],
+                risk_level: NaturalRiskLevel::Low,
+                needs_active_chain: false,
+                creates_chain: false,
+                prefers_disposable_workspace: false,
+                confirmation_required: false,
+                internal_action: "/plan",
+            },
+            Self::SummarizeWork => WorkSessionIntentSpec {
+                intent: self,
+                triggers: &["summarize", "show me what changed", "what changed"],
+                examples: &["summarize the current work", "show me what you changed"],
+                risk_level: NaturalRiskLevel::Low,
+                needs_active_chain: false,
+                creates_chain: false,
+                prefers_disposable_workspace: false,
+                confirmation_required: false,
+                internal_action: "/chain status",
+            },
+            Self::ContinueWork => WorkSessionIntentSpec {
+                intent: self,
+                triggers: &[
+                    "continue",
+                    "resume",
+                    "keep going",
+                    "pick up where you left off",
+                ],
+                examples: &["continue where you left off"],
                 risk_level: NaturalRiskLevel::Medium,
-                confirmation_required: true,
-                disposable_workspace_preferred: true,
-                chain_context_required: false,
+                needs_active_chain: true,
+                creates_chain: false,
+                prefers_disposable_workspace: false,
+                confirmation_required: false,
+                internal_action: "/chain resume or working-memory follow-up",
             },
-            Self::BuildFeature
-            | Self::GenerateApp
-            | Self::RepoCleanup
-            | Self::ProductionReadiness => NaturalIntentPolicy {
+            Self::StopWork => WorkSessionIntentSpec {
+                intent: self,
+                triggers: &["stop", "halt", "pause"],
+                examples: &["stop"],
+                risk_level: NaturalRiskLevel::Low,
+                needs_active_chain: false,
+                creates_chain: false,
+                prefers_disposable_workspace: false,
+                confirmation_required: false,
+                internal_action: "/stop",
+            },
+            Self::RunValidation => WorkSessionIntentSpec {
+                intent: self,
+                triggers: &["run tests", "run validation", "test and fix"],
+                examples: &["run tests and fix what breaks"],
+                risk_level: NaturalRiskLevel::Medium,
+                needs_active_chain: false,
+                creates_chain: true,
+                prefers_disposable_workspace: true,
+                confirmation_required: true,
+                internal_action: "/goal validation-first repair plan",
+            },
+            Self::FixFailure => WorkSessionIntentSpec {
+                intent: self,
+                triggers: &["fix warnings", "fix what broke", "repair failure"],
+                examples: &["fix the warnings"],
+                risk_level: NaturalRiskLevel::Medium,
+                needs_active_chain: false,
+                creates_chain: true,
+                prefers_disposable_workspace: true,
+                confirmation_required: true,
+                internal_action: "/goal bounded repair plan",
+            },
+            Self::RepoCleanup => WorkSessionIntentSpec {
+                intent: self,
+                triggers: &["clean up repo", "repo cleanup", "repository cleanup"],
+                examples: &["clean up this repo"],
                 risk_level: NaturalRiskLevel::High,
+                needs_active_chain: false,
+                creates_chain: true,
+                prefers_disposable_workspace: true,
                 confirmation_required: true,
-                disposable_workspace_preferred: true,
-                chain_context_required: false,
+                internal_action: "/goal cleanup work session",
             },
-            Self::Unknown => NaturalIntentPolicy {
+            Self::AuditDocs => WorkSessionIntentSpec {
+                intent: self,
+                triggers: &["audit docs", "review docs", "documentation audit"],
+                examples: &["audit the docs"],
                 risk_level: NaturalRiskLevel::Medium,
+                needs_active_chain: false,
+                creates_chain: true,
+                prefers_disposable_workspace: true,
                 confirmation_required: true,
-                disposable_workspace_preferred: true,
-                chain_context_required: false,
+                internal_action: "/goal documentation audit",
             },
+            Self::ProductionReadiness => WorkSessionIntentSpec {
+                intent: self,
+                triggers: &["production ready", "harden repo", "release ready"],
+                examples: &["make this production ready"],
+                risk_level: NaturalRiskLevel::High,
+                needs_active_chain: false,
+                creates_chain: true,
+                prefers_disposable_workspace: true,
+                confirmation_required: true,
+                internal_action: "/goal staged production-readiness plan",
+            },
+            Self::BuildFeature => WorkSessionIntentSpec {
+                intent: self,
+                triggers: &["build", "implement", "add", "create", "make"],
+                examples: &["build the billing dashboard"],
+                risk_level: NaturalRiskLevel::High,
+                needs_active_chain: false,
+                creates_chain: true,
+                prefers_disposable_workspace: true,
+                confirmation_required: true,
+                internal_action: "/goal feature plan",
+            },
+            Self::GenerateApp => WorkSessionIntentSpec {
+                intent: self,
+                triggers: &["build app", "create SaaS", "make site"],
+                examples: &["build me a SaaS starter"],
+                risk_level: NaturalRiskLevel::High,
+                needs_active_chain: false,
+                creates_chain: true,
+                prefers_disposable_workspace: true,
+                confirmation_required: true,
+                internal_action: "/goal app-generation plan",
+            },
+            Self::ReadOnlyAnalysis => WorkSessionIntentSpec {
+                intent: self,
+                triggers: &["audit", "inspect", "analyze", "review"],
+                examples: &["review this repo first"],
+                risk_level: NaturalRiskLevel::Low,
+                needs_active_chain: false,
+                creates_chain: true,
+                prefers_disposable_workspace: false,
+                confirmation_required: false,
+                internal_action: "/goal read-only analysis",
+            },
+            Self::Unknown => WorkSessionIntentSpec {
+                intent: self,
+                triggers: &["unclassified task-like input"],
+                examples: &["do the thing"],
+                risk_level: NaturalRiskLevel::Medium,
+                needs_active_chain: false,
+                creates_chain: true,
+                prefers_disposable_workspace: true,
+                confirmation_required: true,
+                internal_action: "/goal after clarification or preview",
+            },
+        }
+    }
+
+    fn policy(self) -> NaturalIntentPolicy {
+        let spec = self.spec();
+        NaturalIntentPolicy {
+            risk_level: spec.risk_level,
+            confirmation_required: spec.confirmation_required,
+            disposable_workspace_preferred: spec.prefers_disposable_workspace,
+            chain_context_required: spec.needs_active_chain,
+            creates_chain: spec.creates_chain,
+            internal_action: spec.internal_action,
         }
     }
 
@@ -241,8 +391,13 @@ impl NaturalLanguageIntent {
             "what happened",
             "summarize what happened",
             "summarize the work",
+            "summarize current work",
+            "summarize the current work",
             "summarize progress",
             "give me a summary",
+            "show me what changed",
+            "show me what you changed",
+            "what changed",
         ]) {
             return Self::SummarizeWork;
         }
@@ -315,8 +470,10 @@ impl NaturalLanguageIntent {
         }
         if contains_any(&[
             "make it production ready",
+            "make this production ready",
             "production ready",
             "harden this repo",
+            "release ready",
         ]) {
             return Self::ProductionReadiness;
         }
@@ -2847,10 +3004,100 @@ impl App {
                             crate::persistence::ChainLifecycleStatus::Ready => "ready",
                             _ => "not active",
                         };
+                        let changed_files: HashSet<String> = chain
+                            .steps
+                            .iter()
+                            .flat_map(|step| {
+                                step.execution_results
+                                    .iter()
+                                    .flat_map(|capture| capture.affected_paths.clone())
+                                    .collect::<Vec<_>>()
+                            })
+                            .collect();
+                        let validation_status = if chain
+                            .steps
+                            .iter()
+                            .any(|step| step.validation_passed == Some(false))
+                        {
+                            "failed"
+                        } else if chain
+                            .steps
+                            .iter()
+                            .any(|step| step.validation_passed == Some(true))
+                        {
+                            "passed"
+                        } else if self.state.execution.validation_summary.is_some() {
+                            "pending or running"
+                        } else {
+                            "not run yet"
+                        };
+                        let source_repo_status = if self
+                            .state
+                            .repo
+                            .disposable_workspace_require_explicit_promotion
+                            .unwrap_or(true)
+                        {
+                            "unchanged unless you promote the report"
+                        } else {
+                            "may include direct workspace changes"
+                        };
+                        let workspace_mode =
+                            if self.state.repo.disposable_workspace_backend.is_some() {
+                                "disposable worktree"
+                            } else {
+                                "source workspace"
+                            };
+                        let current_step = chain
+                            .active_step
+                            .and_then(|index| chain.steps.get(index).map(|step| (index, step)))
+                            .map(|(index, step)| {
+                                format!(
+                                    "{} of {} - {}",
+                                    index + 1,
+                                    chain.steps.len(),
+                                    step.description
+                                )
+                            })
+                            .or_else(|| {
+                                chain
+                                    .steps
+                                    .iter()
+                                    .position(|step| {
+                                        matches!(
+                                            step.status,
+                                            crate::persistence::ChainStepStatus::Pending
+                                                | crate::persistence::ChainStepStatus::Running
+                                        )
+                                    })
+                                    .and_then(|index| {
+                                        chain.steps.get(index).map(|step| {
+                                            format!(
+                                                "{} of {} - {}",
+                                                index + 1,
+                                                chain.steps.len(),
+                                                step.description
+                                            )
+                                        })
+                                    })
+                            })
+                            .unwrap_or_else(|| "No active step".to_string());
+
                         let mut msg = format!(
-                            "I found the active task.\nTask: {}\nStatus: {}\nProgress: {}\nContext: {}\nExecution: {}",
-                            chain.objective, status_label, progress, context_info, execution_status
+                            "Work Session: {}\nStatus: {}\nStep: {}\nValidation: {}\nSource repo: {}\nWorkspace mode: {}\nChanged files: {}\nNext: {}",
+                            chain.objective,
+                            status_label,
+                            current_step,
+                            validation_status,
+                            source_repo_status,
+                            workspace_mode,
+                            changed_files.len(),
+                            execution_status
                         );
+
+                        msg.push_str(&format!(
+                            "\n\nProgress: {}\nContext: {}",
+                            progress, context_info
+                        ));
 
                         if let Some(desc) = readiness.next_step_description.as_deref() {
                             msg.push_str(&format!("\nNext: {}", desc));
@@ -6016,12 +6263,14 @@ impl App {
                 self.emit_event(
                     "intent",
                     &format!(
-                        "{:?} risk={:?} confirm={} disposable={} context={}",
+                        "{:?} risk={:?} confirm={} disposable={} context={} creates_chain={} action={}",
                         intent,
                         policy.risk_level,
                         policy.confirmation_required,
                         policy.disposable_workspace_preferred,
-                        policy.chain_context_required
+                        policy.chain_context_required,
+                        policy.creates_chain,
+                        policy.internal_action
                     ),
                 );
                 self.append_user_message(&content);
@@ -6083,12 +6332,14 @@ impl App {
                 self.emit_event(
                     "intent",
                     &format!(
-                        "{:?} risk={:?} confirm={} disposable={} context={}",
+                        "{:?} risk={:?} confirm={} disposable={} context={} creates_chain={} action={}",
                         intent,
                         policy.risk_level,
                         policy.confirmation_required,
                         policy.disposable_workspace_preferred,
-                        policy.chain_context_required
+                        policy.chain_context_required,
+                        policy.creates_chain,
+                        policy.internal_action
                     ),
                 );
 
@@ -11722,6 +11973,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn natural_language_build_me_a_saas_routes_to_generate_app_with_preview_required() {
+        let app = App::new().await;
+        let route = app.classify_input_intent("build me a SaaS");
+
+        match route {
+            InputRouting::TaskGoal { intent, statement } => {
+                let policy = intent.policy();
+                assert_eq!(intent, NaturalLanguageIntent::GenerateApp);
+                assert!(policy.confirmation_required);
+                assert!(policy.disposable_workspace_preferred);
+                assert!(policy.creates_chain);
+                assert!(statement.contains("staged implementation plan"));
+            }
+            other => panic!("expected GenerateApp task goal, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
     async fn natural_language_fix_warnings_routes_to_repair_goal() {
         let app = App::new().await;
         let route = app.classify_input_intent("fix the warnings");
@@ -11732,6 +12001,20 @@ mod tests {
                 assert!(statement.contains("compiler warnings"));
             }
             other => panic!("expected FixFailure task goal, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn natural_language_clean_up_repo_routes_to_cleanup_work_session() {
+        let app = App::new().await;
+        let route = app.classify_input_intent("clean up this repo");
+
+        match route {
+            InputRouting::TaskGoal { intent, statement } => {
+                assert_eq!(intent, NaturalLanguageIntent::RepoCleanup);
+                assert!(statement.contains("Audit and clean up this repository"));
+            }
+            other => panic!("expected RepoCleanup task goal, got {:?}", other),
         }
     }
 
@@ -11824,7 +12107,7 @@ mod tests {
     #[tokio::test]
     async fn natural_language_production_ready_routes_to_readiness_goal() {
         let app = App::new().await;
-        let route = app.classify_input_intent("make it production ready");
+        let route = app.classify_input_intent("make this production ready");
 
         match route {
             InputRouting::TaskGoal { intent, statement } => {
@@ -11838,7 +12121,21 @@ mod tests {
     #[tokio::test]
     async fn natural_language_summarize_routes_to_status_command() {
         let app = App::new().await;
-        let route = app.classify_input_intent("summarize what happened");
+        let route = app.classify_input_intent("summarize the current work");
+
+        match route {
+            InputRouting::NaturalCommand { intent, command } => {
+                assert_eq!(intent, NaturalLanguageIntent::SummarizeWork);
+                assert_eq!(command, Command::ChainStatus { chain_id: None });
+            }
+            other => panic!("expected SummarizeWork command, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn natural_language_show_changed_routes_to_summary_command() {
+        let app = App::new().await;
+        let route = app.classify_input_intent("show me what you changed");
 
         match route {
             InputRouting::NaturalCommand { intent, command } => {
@@ -11869,6 +12166,92 @@ mod tests {
         let route = app.classify_input_intent("what is Rust ownership?");
 
         assert_eq!(route, InputRouting::Chat);
+    }
+
+    #[tokio::test]
+    async fn routing_natural_language_examples_cover_work_session_table() {
+        let app = App::new().await;
+        let cases = [
+            ("fix the warnings", NaturalLanguageIntent::FixFailure),
+            ("clean up this repo", NaturalLanguageIntent::RepoCleanup),
+            ("audit the docs", NaturalLanguageIntent::AuditDocs),
+            (
+                "make this production ready",
+                NaturalLanguageIntent::ProductionReadiness,
+            ),
+            ("build me a SaaS", NaturalLanguageIntent::GenerateApp),
+            (
+                "run tests and fix what breaks",
+                NaturalLanguageIntent::RunValidation,
+            ),
+        ];
+
+        for (input, expected) in cases {
+            match app.classify_input_intent(input) {
+                InputRouting::TaskGoal { intent, .. } => assert_eq!(intent, expected, "{input}"),
+                other => panic!("expected task goal for {input}, got {:?}", other),
+            }
+        }
+
+        assert!(matches!(
+            app.classify_input_intent("show me the plan"),
+            InputRouting::NaturalCommand {
+                intent: NaturalLanguageIntent::ShowPlan,
+                command: Command::ShowPlan
+            }
+        ));
+        assert!(matches!(
+            app.classify_input_intent("stop"),
+            InputRouting::NaturalCommand {
+                intent: NaturalLanguageIntent::StopWork,
+                command: Command::Stop
+            }
+        ));
+        assert_eq!(
+            app.classify_input_intent("what is Rust ownership?"),
+            InputRouting::Chat
+        );
+    }
+
+    #[test]
+    fn work_session_intent_specs_define_policy_and_actions() {
+        let intents = [
+            NaturalLanguageIntent::ChatQuestion,
+            NaturalLanguageIntent::ShowStatus,
+            NaturalLanguageIntent::ShowPlan,
+            NaturalLanguageIntent::SummarizeWork,
+            NaturalLanguageIntent::ContinueWork,
+            NaturalLanguageIntent::StopWork,
+            NaturalLanguageIntent::RunValidation,
+            NaturalLanguageIntent::FixFailure,
+            NaturalLanguageIntent::RepoCleanup,
+            NaturalLanguageIntent::AuditDocs,
+            NaturalLanguageIntent::ProductionReadiness,
+            NaturalLanguageIntent::BuildFeature,
+            NaturalLanguageIntent::GenerateApp,
+            NaturalLanguageIntent::Unknown,
+        ];
+
+        for intent in intents {
+            let spec = intent.spec();
+            assert_eq!(spec.intent, intent);
+            assert!(!spec.triggers.is_empty(), "{:?} missing triggers", intent);
+            assert!(!spec.examples.is_empty(), "{:?} missing examples", intent);
+            assert!(
+                !spec.internal_action.is_empty(),
+                "{:?} missing internal action",
+                intent
+            );
+        }
+
+        let continue_spec = NaturalLanguageIntent::ContinueWork.spec();
+        assert!(continue_spec.needs_active_chain);
+        assert!(!continue_spec.creates_chain);
+
+        let app_spec = NaturalLanguageIntent::GenerateApp.spec();
+        assert!(app_spec.confirmation_required);
+        assert!(app_spec.prefers_disposable_workspace);
+        assert!(app_spec.creates_chain);
     }
 
     #[tokio::test]
@@ -11965,8 +12348,11 @@ mod tests {
             .expect("chain status");
 
         let rendered = latest_user_visible_payload(&app);
-        assert!(rendered.contains("I found the active task"));
+        assert!(rendered.contains("Work Session: Clean up repo"));
         assert!(rendered.contains("Status: in progress"));
+        assert!(rendered.contains("Source repo:"));
+        assert!(rendered.contains("Workspace mode:"));
+        assert!(rendered.contains("Changed files:"));
         assert!(!rendered.contains("ID:"));
         assert!(!rendered.contains("chain-operator-visible"));
         assert!(!rendered.contains("Audit:"));

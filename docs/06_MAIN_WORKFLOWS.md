@@ -33,7 +33,7 @@ sequenceDiagram
 
 **Prerequisites**: Repo attached, Ollama connected, model available
 
-## Normal Mode Natural-Language Workflow
+## Normal Mode Natural-Language Work Session Workflow
 
 ```mermaid
 flowchart TD
@@ -43,7 +43,7 @@ flowchart TD
     B -->|Continue/follow-up| E{Active chain context?}
     E -->|Yes| F[Resolve working memory]
     E -->|No| G[Explain no active work]
-    B -->|Broad work| H[Stage goal plan]
+    B -->|Broad work| H[Create Work Session and stage goal plan]
     H --> I[Preview risk and wait for confirmation]
     I --> J[Run bounded chain]
     J --> K[Disposable worktree when configured/preferred]
@@ -60,7 +60,9 @@ Examples:
 - `continue where you left off` -> active chain or working-memory continuation
 - `stop` -> `/stop` equivalent
 
-Natural language does not bypass risk preview, confirmation, chain policy, validation gates, or destructive-command protections.
+Natural language is the primary Normal Mode interface, but it does not bypass risk preview, confirmation, chain policy, validation gates, or destructive-command protections. Broad or dangerous work may still require preview or confirmation. Disposable workspace protects the source workspace by executing in a temporary git worktree and producing a promotion report, but it is not a true OS/container sandbox.
+
+Normal Mode renders Work Session status in user-facing terms: what Rasputin is doing, current step, validation result, source repo change status, workspace mode, changed file count, and next suggested action. Operator Mode preserves the technical chain, audit, checkpoint, and worker details.
 
 ## Autonomous Goal And Forge Task Workflow
 

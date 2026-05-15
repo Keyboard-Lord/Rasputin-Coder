@@ -2,7 +2,7 @@
 
 ## Natural-Language Normal Mode
 
-Normal Mode is the primary user interface: type the outcome directly. The router maps natural-language intents onto the same internal command, goal, chain, validation, and stop workflows used by slash commands.
+Natural language is the primary Normal Mode interface: type the outcome directly. The router maps natural-language intents into Work Sessions, which wrap the same internal command, goal, chain, validation, disposable workspace, and stop workflows used by slash commands.
 
 | Example input | Intent | Internal route |
 |---------------|--------|----------------|
@@ -15,8 +15,9 @@ Normal Mode is the primary user interface: type the outcome directly. The router
 | `show me the plan` | Show plan | `/plan` equivalent |
 | `summarize what happened` | Summarize work | Active chain/status summary |
 | `stop` | Stop work | `/stop` equivalent |
+| `what is Rust ownership?` | Chat question | Plain chat; no mutation |
 
-Natural language is not a bypass. Broad or risky work can still require confirmation, dangerous actions can still block, and validation/chain/disposable-workspace policy remains enforced.
+Natural language is not a bypass. Broad or risky work can still require preview or confirmation, dangerous actions can still block, and validation/chain/disposable-workspace policy remains enforced. Disposable workspace is source-workspace protection, not a true OS/container sandbox.
 
 ## Slash Commands (User Interface)
 
